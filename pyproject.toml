@@ -1,0 +1,65 @@
+[project]
+name = "schemaguard"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "gazi04", email = "gazmendhalili2016@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
+    "sqlglot>=30.21.0",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+schemaguard = "schemaguard:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+# Beyond ruff's default E+F: B catches raise-without-from and mutable defaults,
+# ASYNC catches blocking calls in async functions, SIM/C4/RUF catch the rest.
+select = ["E", "F", "W", "B", "S", "I", "C4", "SIM", "ASYNC", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: asserts are the point of a test file.
+# SIM105/SIM117: stacked `with patch(...)` blocks and deliberate swallow-and-
+# assert are clearer left as-is in tests than collapsed.
+"tests/*" = ["S101", "SIM105", "SIM117"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom is a call in the argument default; it is
+# evaluated once at import and never mutated, so B008 does not apply.
+extend-immutable-calls = [
+  "fastapi.Depends",
+  "fastapi.Query",
+  "fastapi.Path",
+  "fastapi.Body",
+  "fastapi.Header",
+  "fastapi.Cookie",
+  "fastapi.File",
+  "fastapi.Form",
+  "fastapi.Security",
+]
+
