@@ -71,8 +71,15 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                         nullable=allow_null,
                     )
                 )
+
+        elif isinstance(action, exp.AlterRename):
+            pass
         elif isinstance(action, exp.Drop):
-            column = action.args["tables"][0].this.this
+            if action.args.get("kind") == "CONSTRAINT":
+                # TODO step 5: NotAnalyzed
+                continue
+
+            column = action.args["tables"][0].name
             change = SchemaChange(
                 kind=ChangeKind.DROP_COLUMN,
                 table=table,
