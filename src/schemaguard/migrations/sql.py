@@ -9,7 +9,6 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
     for statement in parse(sql, read="postgres"):
         if isinstance(statement, exp.Alter):
             changes.extend(_parse_alter(statement, source_file, line))
-            continue
 
     return ChangeSet(changes=tuple(changes), not_analyzed=())
 
@@ -31,6 +30,19 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                 new_name=new_name,
             )
             changes.append(change)
+        elif isinstance(action, exp.ColumnDef):
+            new_column = action.name
+            column_type = str(action.args.get("kind"))
+            changes.append(
+                SchemaChange(
+                    kind=ChangeKind.ADD_COLUMN,
+                    table=table,
+                    source_file=source_file,
+                    line=line,
+                    column=new_column,
+                    new_type=column_type,
+                )
+            )
         elif isinstance(action, exp.Drop):
             column = action.args["tables"][0].this.this
             change = SchemaChange(

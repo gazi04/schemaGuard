@@ -25,3 +25,16 @@ def test_drop_column():
 
     assert changes.kind is ChangeKind.DROP_COLUMN
     assert changes.table == "customers"
+    assert changes.column == "email"
+
+
+def test_add_column():
+    query = "ALTER TABLE customers ADD COLUMN age INT"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    changes = result.changes[0]
+
+    assert changes.kind is ChangeKind.ADD_COLUMN
+    assert changes.table == "customers"
+    assert changes.column == "age"
