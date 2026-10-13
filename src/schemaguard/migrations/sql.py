@@ -43,6 +43,34 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                     new_type=column_type,
                 )
             )
+        elif isinstance(action, exp.AlterColumn):
+            dtype = action.args.get("dtype")
+            column = action.this.name
+            allow_null = action.args.get("allow_null")
+
+            if dtype is not None:
+                changes.append(
+                    SchemaChange(
+                        kind=ChangeKind.ALTER_TYPE,
+                        table=table,
+                        source_file=source_file,
+                        line=line,
+                        column=column,
+                        new_type=dtype.sql(dialect="postgres"),
+                    )
+                )
+
+            elif allow_null is not None:
+                changes.append(
+                    SchemaChange(
+                        kind=ChangeKind.ALTER_NULLABILITY,
+                        table=table,
+                        source_file=source_file,
+                        line=line,
+                        column=column,
+                        nullable=allow_null,
+                    )
+                )
         elif isinstance(action, exp.Drop):
             column = action.args["tables"][0].this.this
             change = SchemaChange(
