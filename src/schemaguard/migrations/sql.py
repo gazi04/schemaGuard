@@ -9,6 +9,8 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
     for statement in parse(sql, read="postgres"):
         if isinstance(statement, exp.Alter):
             changes.extend(_parse_alter(statement, source_file, line))
+        elif isinstance(statement, exp.Drop):
+            changes.extend(_parse_drop(statement, source_file, line))
 
     return ChangeSet(changes=tuple(changes), not_analyzed=())
 
@@ -97,5 +99,23 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                 column=column,
             )
             changes.append(change)
+
+    return changes
+
+
+def _parse_drop(stm: exp.Drop, source_file: str, line: int) -> list[SchemaChange]:
+    changes: list[SchemaChange] = []
+
+    if stm.kind != "TABLE":
+        return changes
+
+    for table in stm.args.get("tables", []):
+        change = SchemaChange(
+            kind=ChangeKind.DROP_TABLE,
+            table=table.name,
+            source_file=source_file,
+            line=line,
+        )
+        changes.append(change)
 
     return changes
