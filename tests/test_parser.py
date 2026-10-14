@@ -92,3 +92,19 @@ def test_rename_table():
     assert changes.new_name == "users"
 
 
+def test_drop_columns():
+    query = "ALTER TABLE customers DROP COLUMN email, DROP COLUMN age"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    changes = result.changes[0]
+
+    assert changes.kind is ChangeKind.DROP_COLUMN
+    assert changes.table == "customers"
+    assert changes.column == "email"
+
+    changes = result.changes[1]
+
+    assert changes.kind is ChangeKind.DROP_COLUMN
+    assert changes.table == "customers"
+    assert changes.column == "age"
