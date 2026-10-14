@@ -108,3 +108,11 @@ def test_drop_columns():
     assert changes.kind is ChangeKind.DROP_COLUMN
     assert changes.table == "customers"
     assert changes.column == "age"
+
+
+def test_drop_constraint():
+    query = "ALTER TABLE customers DROP CONSTRAINT fk_id"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    assert result.changes == ()
