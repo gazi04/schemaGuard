@@ -73,7 +73,16 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                 )
 
         elif isinstance(action, exp.AlterRename):
-            pass
+            name = action.this.name
+            changes.append(
+                SchemaChange(
+                    kind=ChangeKind.RENAME_TABLE,
+                    table=table,
+                    source_file=source_file,
+                    line=line,
+                    new_name=name,
+                )
+            )
         elif isinstance(action, exp.Drop):
             if action.args.get("kind") == "CONSTRAINT":
                 # TODO step 5: NotAnalyzed

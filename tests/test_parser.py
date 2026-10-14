@@ -79,3 +79,16 @@ def test_alter_column_nullable():
     assert changes.new_type is None
     assert changes.nullable is True
 
+
+def test_rename_table():
+    query = "ALTER TABLE customers RENAME TO users"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    changes = result.changes[0]
+
+    assert changes.kind is ChangeKind.RENAME_TABLE
+    assert changes.table == "customers"
+    assert changes.new_name == "users"
+
+
