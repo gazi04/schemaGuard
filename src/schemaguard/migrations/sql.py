@@ -84,7 +84,7 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
                 )
             )
         elif isinstance(action, exp.Drop):
-            if action.args.get("kind") == "CONSTRAINT":
+            if action.args.get("kind") != "COLUMN":
                 # TODO step 5: NotAnalyzed
                 continue
 
