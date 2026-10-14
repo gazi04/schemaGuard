@@ -116,3 +116,37 @@ def test_drop_constraint():
 
     assert isinstance(result, ChangeSet)
     assert result.changes == ()
+
+
+def test_drop_table():
+    query = "DROP TABLE orders"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    assert result.changes
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.DROP_TABLE
+    assert change.table == "orders"
+    assert change.source_file == "source.sql"
+
+    query = "DROP TABLE orders, customers, items"
+    result = parse_sql(query, "source.sql")
+
+    assert isinstance(result, ChangeSet)
+    assert result.changes
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.DROP_TABLE
+    assert change.table == "orders"
+    assert change.source_file == "source.sql"
+
+    change = result.changes[1]
+    assert change.kind is ChangeKind.DROP_TABLE
+    assert change.table == "customers"
+    assert change.source_file == "source.sql"
+
+    change = result.changes[2]
+    assert change.kind is ChangeKind.DROP_TABLE
+    assert change.table == "items"
+    assert change.source_file == "source.sql"
