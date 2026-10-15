@@ -133,7 +133,12 @@ def test_drop_constraint():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes == ()
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 1
+
+    entry = result.not_analyzed[0]
+    assert "DROP CONSTRAINT" in entry.reason
+    assert entry.source_file == DUMMY_FILE_NAME
 
 
 def test_drop_table():
