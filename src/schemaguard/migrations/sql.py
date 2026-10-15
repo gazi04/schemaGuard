@@ -1,4 +1,5 @@
 from sqlglot import exp, parse
+from sqlglot.errors import ParseError
 
 from schemaguard.migrations.changes import (
     ChangeKind,
@@ -7,11 +8,37 @@ from schemaguard.migrations.changes import (
     SchemaChange,
 )
 
+MAX_SQL_LENGTH: int = 80
+
+
+def _short(sql: str) -> str:
+    text = " ".join(sql.split())
+
+    if len(text) <= MAX_SQL_LENGTH:
+        return text
+
+    return text[:MAX_SQL_LENGTH] + "..."
+
 
 def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
     results: list[SchemaChange | NotAnalyzed] = []
 
-    for statement in parse(sql, read="postgres"):
+    try:
+        statements = parse(sql, read="postgres")
+    except ParseError:
+        not_analyzed = [
+            NotAnalyzed(
+                reason=f"Could not parse SQL: {_short(sql)}",
+                source_file=source_file,
+                line=line,
+            )
+        ]
+        return ChangeSet(
+            changes=(),
+            not_analyzed=tuple(not_analyzed),
+        )
+
+    for statement in statements:
         if isinstance(statement, exp.Alter):
             results.extend(_parse_alter(statement, source_file, line))
         elif isinstance(statement, exp.Drop):
