@@ -189,16 +189,22 @@ def _parse_drop(
 ) -> list[SchemaChange | NotAnalyzed]:
     changes: list[SchemaChange | NotAnalyzed] = []
 
-    if stm.kind != "TABLE":
-        return changes
-
-    for table in stm.args.get("tables", []):
-        change = SchemaChange(
-            kind=ChangeKind.DROP_TABLE,
-            table=table.name,
-            source_file=source_file,
-            line=line,
+    if stm.kind == "TABLE":
+        for table in stm.args.get("tables", []):
+            change = SchemaChange(
+                kind=ChangeKind.DROP_TABLE,
+                table=table.name,
+                source_file=source_file,
+                line=line,
+            )
+            changes.append(change)
+    else:
+        changes.append(
+            NotAnalyzed(
+                reason=f"DROP {stm.kind} not checked: {_short(stm.sql(dialect='postgres'))}",
+                source_file=source_file,
+                line=line,
+            )
         )
-        changes.append(change)
 
     return changes
