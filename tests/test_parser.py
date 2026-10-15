@@ -10,7 +10,8 @@ def test_rename_query():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.RENAME_COLUMN
@@ -25,7 +26,8 @@ def test_drop_column():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.DROP_COLUMN
@@ -38,7 +40,8 @@ def test_add_column():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.ADD_COLUMN
@@ -51,7 +54,8 @@ def test_alter_column_type():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.ALTER_TYPE
@@ -66,7 +70,8 @@ def test_alter_column_nullable():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.ALTER_NULLABILITY
@@ -79,7 +84,8 @@ def test_alter_column_nullable():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.ALTER_NULLABILITY
@@ -94,7 +100,8 @@ def test_rename_table():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.RENAME_TABLE
@@ -107,7 +114,8 @@ def test_drop_columns():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 2
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.DROP_COLUMN
@@ -133,7 +141,8 @@ def test_drop_table():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 3
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.DROP_TABLE
@@ -144,7 +153,8 @@ def test_drop_table():
     result = parse_sql(query, DUMMY_FILE_NAME)
 
     assert isinstance(result, ChangeSet)
-    assert result.changes
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
 
     change = result.changes[0]
     assert change.kind is ChangeKind.DROP_TABLE
