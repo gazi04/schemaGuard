@@ -121,7 +121,6 @@ def _parse_alter(
                         new_type=dtype.sql(dialect="postgres"),
                     )
                 )
-
             elif allow_null is not None:
                 changes.append(
                     SchemaChange(
@@ -133,7 +132,14 @@ def _parse_alter(
                         nullable=allow_null,
                     )
                 )
-
+            else:
+                changes.append(
+                    NotAnalyzed(
+                        reason=f"ALTER COLUMN change not checked: {_short(action.sql(dialect='postgres'))}",
+                        source_file=source_file,
+                        line=line,
+                    )
+                )
         elif isinstance(action, exp.AlterRename):
             name = action.this.name
             changes.append(
@@ -146,8 +152,15 @@ def _parse_alter(
                 )
             )
         elif isinstance(action, exp.Drop):
-            if action.args.get("kind") != "COLUMN":
-                # TODO step 5: NotAnalyzed
+            kind = action.args.get("kind")
+            if kind != "COLUMN":
+                changes.append(
+                    NotAnalyzed(
+                        reason=f"DROP {kind} not checked: {_short(action.sql(dialect='postgres'))}",
+                        source_file=source_file,
+                        line=line,
+                    )
+                )
                 continue
 
             column = action.args["tables"][0].name
@@ -159,6 +172,14 @@ def _parse_alter(
                 column=column,
             )
             changes.append(change)
+        else:
+            changes.append(
+                NotAnalyzed(
+                    reason=f"ALTER TABLE action not checked: {_short(action.sql(dialect='postgres'))}",
+                    source_file=source_file,
+                    line=line,
+                )
+            )
 
     return changes
 
