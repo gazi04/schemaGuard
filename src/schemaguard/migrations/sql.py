@@ -39,10 +39,29 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
         )
 
     for statement in statements:
+        if statement is None:
+            continue
+
         if isinstance(statement, exp.Alter):
             results.extend(_parse_alter(statement, source_file, line))
         elif isinstance(statement, exp.Drop):
             results.extend(_parse_drop(statement, source_file, line))
+        elif isinstance(statement, exp.Command):
+            results.append(
+                NotAnalyzed(
+                    reason=f"Could not break down statement: {_short(statement.sql(dialect='postgres'))}",
+                    source_file=source_file,
+                    line=line,
+                )
+            )
+        else:
+            results.append(
+                NotAnalyzed(
+                    reason=f"Statement not checked: {_short(statement.sql(dialect='postgres'))}",
+                    source_file=source_file,
+                    line=line,
+                )
+            )
 
     changes = tuple(change for change in results if isinstance(change, SchemaChange))
     not_analyzed = tuple(
