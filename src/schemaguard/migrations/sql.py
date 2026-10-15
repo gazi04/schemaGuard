@@ -1,22 +1,36 @@
 from sqlglot import exp, parse
 
-from schemaguard.migrations.changes import ChangeKind, ChangeSet, SchemaChange
+from schemaguard.migrations.changes import (
+    ChangeKind,
+    ChangeSet,
+    NotAnalyzed,
+    SchemaChange,
+)
 
 
 def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
-    changes: list[SchemaChange] = []
+    results: list[SchemaChange | NotAnalyzed] = []
 
     for statement in parse(sql, read="postgres"):
         if isinstance(statement, exp.Alter):
-            changes.extend(_parse_alter(statement, source_file, line))
+            results.extend(_parse_alter(statement, source_file, line))
         elif isinstance(statement, exp.Drop):
-            changes.extend(_parse_drop(statement, source_file, line))
+            results.extend(_parse_drop(statement, source_file, line))
 
-    return ChangeSet(changes=tuple(changes), not_analyzed=())
+    changes = tuple(change for change in results if isinstance(change, SchemaChange))
+    not_analyzed = tuple(
+        not_analyzed
+        for not_analyzed in results
+        if isinstance(not_analyzed, NotAnalyzed)
+    )
+
+    return ChangeSet(changes=changes, not_analyzed=not_analyzed)
 
 
-def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChange]:
-    changes: list[SchemaChange] = []
+def _parse_alter(
+    stm: exp.Alter, source_file: str, line: int
+) -> list[SchemaChange | NotAnalyzed]:
+    changes: list[SchemaChange | NotAnalyzed] = []
     table = stm.this.name
 
     for action in stm.actions:
@@ -103,8 +117,10 @@ def _parse_alter(stm: exp.Alter, source_file: str, line: int) -> list[SchemaChan
     return changes
 
 
-def _parse_drop(stm: exp.Drop, source_file: str, line: int) -> list[SchemaChange]:
-    changes: list[SchemaChange] = []
+def _parse_drop(
+    stm: exp.Drop, source_file: str, line: int
+) -> list[SchemaChange | NotAnalyzed]:
+    changes: list[SchemaChange | NotAnalyzed] = []
 
     if stm.kind != "TABLE":
         return changes
