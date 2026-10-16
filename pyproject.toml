@@ -33,6 +33,7 @@ dev = [
 
 [tool.pyright]
 include = ["src", "tests"]
+exclude = ["tests/fixture"]
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
