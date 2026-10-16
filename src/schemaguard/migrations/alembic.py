@@ -6,6 +6,7 @@ from schemaguard.migrations.changes import (
     NotAnalyzed,
     SchemaChange,
 )
+from schemaguard.migrations.text import short
 
 
 def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
@@ -32,7 +33,7 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
         if not (isinstance(node, Expr) and isinstance(node.value, Call)):
             results.append(
                 NotAnalyzed(
-                    reason=f"Statement not checked: {unparse(node)}",
+                    reason=f"Statement not checked: {short(unparse(node))}",
                     source_file=source_file,
                     line=node.lineno,
                 )
@@ -47,7 +48,7 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
         ):
             results.append(
                 NotAnalyzed(
-                    reason=f"Non-op call not checked: {unparse(node)}",
+                    reason=f"Non-op call not checked: {short(unparse(node))}",
                     source_file=source_file,
                     line=node.lineno,
                 )
@@ -59,7 +60,7 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
         else:
             results.append(
                 NotAnalyzed(
-                    reason=f"op.{call.func.attr} not checked: {unparse(node)}",
+                    reason=f"op.{call.func.attr} not checked: {short(unparse(node))}",
                     source_file=source_file,
                     line=node.lineno,
                 )
@@ -78,7 +79,7 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
 def _parse_drop_table(node: Call, source_file: str) -> SchemaChange | NotAnalyzed:
     if not node.args:
         return NotAnalyzed(
-            reason=f"op.drop_table not checked: {unparse(node)}",
+            reason=f"op.drop_table not checked: {short(unparse(node))}",
             source_file=source_file,
             line=node.lineno,
         )
@@ -86,7 +87,7 @@ def _parse_drop_table(node: Call, source_file: str) -> SchemaChange | NotAnalyze
     arg = node.args[0]
     if not (isinstance(arg, Constant) and isinstance(arg.value, str)):
         return NotAnalyzed(
-            reason=f"drop_table not checked: {unparse(node)}",
+            reason=f"op.drop_table not checked: {short(unparse(node))}",
             source_file=source_file,
             line=node.lineno,
         )

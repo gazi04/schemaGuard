@@ -7,17 +7,7 @@ from schemaguard.migrations.changes import (
     NotAnalyzed,
     SchemaChange,
 )
-
-MAX_SQL_LENGTH: int = 80
-
-
-def _short(sql: str) -> str:
-    text = " ".join(sql.split())
-
-    if len(text) <= MAX_SQL_LENGTH:
-        return text
-
-    return text[:MAX_SQL_LENGTH] + "..."
+from schemaguard.migrations.text import short
 
 
 def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
@@ -28,7 +18,7 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
     except ParseError:
         not_analyzed = [
             NotAnalyzed(
-                reason=f"Could not parse SQL: {_short(sql)}",
+                reason=f"Could not parse SQL: {short(sql)}",
                 source_file=source_file,
                 line=line,
             )
@@ -49,7 +39,7 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
         elif isinstance(statement, exp.Command):
             results.append(
                 NotAnalyzed(
-                    reason=f"Could not break down statement: {_short(statement.sql(dialect='postgres'))}",
+                    reason=f"Could not break down statement: {short(statement.sql(dialect='postgres'))}",
                     source_file=source_file,
                     line=line,
                 )
@@ -57,7 +47,7 @@ def parse_sql(sql: str, source_file: str, line: int = 1) -> ChangeSet:
         else:
             results.append(
                 NotAnalyzed(
-                    reason=f"Statement not checked: {_short(statement.sql(dialect='postgres'))}",
+                    reason=f"Statement not checked: {short(statement.sql(dialect='postgres'))}",
                     source_file=source_file,
                     line=line,
                 )
@@ -135,7 +125,7 @@ def _parse_alter(
             else:
                 changes.append(
                     NotAnalyzed(
-                        reason=f"ALTER COLUMN change not checked: {_short(action.sql(dialect='postgres'))}",
+                        reason=f"ALTER COLUMN change not checked: {short(action.sql(dialect='postgres'))}",
                         source_file=source_file,
                         line=line,
                     )
@@ -156,7 +146,7 @@ def _parse_alter(
             if kind != "COLUMN":
                 changes.append(
                     NotAnalyzed(
-                        reason=f"DROP {kind} not checked: {_short(action.sql(dialect='postgres'))}",
+                        reason=f"DROP {kind} not checked: {short(action.sql(dialect='postgres'))}",
                         source_file=source_file,
                         line=line,
                     )
@@ -175,7 +165,7 @@ def _parse_alter(
         else:
             changes.append(
                 NotAnalyzed(
-                    reason=f"ALTER TABLE action not checked: {_short(action.sql(dialect='postgres'))}",
+                    reason=f"ALTER TABLE action not checked: {short(action.sql(dialect='postgres'))}",
                     source_file=source_file,
                     line=line,
                 )
@@ -201,7 +191,7 @@ def _parse_drop(
     else:
         changes.append(
             NotAnalyzed(
-                reason=f"DROP {stm.kind} not checked: {_short(stm.sql(dialect='postgres'))}",
+                reason=f"DROP {stm.kind} not checked: {short(stm.sql(dialect='postgres'))}",
                 source_file=source_file,
                 line=line,
             )
