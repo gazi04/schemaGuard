@@ -57,6 +57,8 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
 
         if call.func.attr == "drop_table":
             results.append(_parse_drop_table(call, source_file))
+        elif call.func.attr == "rename_table":
+            results.append(_parse_rename_table(call, source_file))
         else:
             results.append(
                 NotAnalyzed(
@@ -101,5 +103,37 @@ def _parse_drop_table(node: Call, source_file: str) -> SchemaChange | NotAnalyze
     )
 
 
+def _parse_rename_table(node: Call, source_file: str) -> SchemaChange | NotAnalyzed:
+    if len(node.args) < 2:
+        return NotAnalyzed(
+            reason=f"op.rename_table not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
 
+    first_arg = node.args[0]
+    sec_arg = node.args[1]
+    if not (isinstance(first_arg, Constant) and isinstance(sec_arg, Constant)):
+        return NotAnalyzed(
+            reason=f"op.rename_table not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    if not (isinstance(first_arg.value, str) and isinstance(sec_arg.value, str)):
+        return NotAnalyzed(
+            reason=f"op.rename_table arguments aren't strings: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    table = first_arg.value
+    new_name = sec_arg.value
+    return SchemaChange(
+        kind=ChangeKind.RENAME_TABLE,
+        table=table,
+        new_name=new_name,
+        source_file=source_file,
+        line=node.lineno,
+    )
 
