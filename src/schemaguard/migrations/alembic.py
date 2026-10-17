@@ -59,6 +59,8 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
             results.append(_parse_drop_table(call, source_file))
         elif call.func.attr == "rename_table":
             results.append(_parse_rename_table(call, source_file))
+        elif call.func.attr == "drop_column":
+            results.append(_parse_drop_column(call, source_file))
         else:
             results.append(
                 NotAnalyzed(
@@ -133,6 +135,41 @@ def _parse_rename_table(node: Call, source_file: str) -> SchemaChange | NotAnaly
         kind=ChangeKind.RENAME_TABLE,
         table=table,
         new_name=new_name,
+        source_file=source_file,
+        line=node.lineno,
+    )
+
+
+def _parse_drop_column(node: Call, source_file: str) -> SchemaChange | NotAnalyzed:
+    if len(node.args) < 2:
+        return NotAnalyzed(
+            reason=f"op.drop_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    first_arg = node.args[0]
+    sec_arg = node.args[1]
+    if not (isinstance(first_arg, Constant) and isinstance(sec_arg, Constant)):
+        return NotAnalyzed(
+            reason=f"op.drop_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    if not (isinstance(first_arg.value, str) and isinstance(sec_arg.value, str)):
+        return NotAnalyzed(
+            reason=f"op.drop_column arguments aren't strings: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    table = first_arg.value
+    column = sec_arg.value
+    return SchemaChange(
+        kind=ChangeKind.DROP_COLUMN,
+        table=table,
+        column=column,
         source_file=source_file,
         line=node.lineno,
     )
