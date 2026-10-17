@@ -61,6 +61,8 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
             results.append(_parse_rename_table(call, source_file))
         elif call.func.attr == "drop_column":
             results.append(_parse_drop_column(call, source_file))
+        elif call.func.attr == "alter_column":
+            results.append(_parse_rename_column(call, source_file))
         else:
             results.append(
                 NotAnalyzed(
@@ -170,6 +172,66 @@ def _parse_drop_column(node: Call, source_file: str) -> SchemaChange | NotAnalyz
         kind=ChangeKind.DROP_COLUMN,
         table=table,
         column=column,
+        source_file=source_file,
+        line=node.lineno,
+    )
+
+
+def _parse_rename_column(node: Call, source_file: str) -> SchemaChange | NotAnalyzed:
+    if len(node.args) < 2 or len(node.keywords) < 1:
+        return NotAnalyzed(
+            reason=f"op.alter_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    first_arg = node.args[0]
+    sec_arg = node.args[1]
+    if not (isinstance(first_arg, Constant) and isinstance(sec_arg, Constant)):
+        return NotAnalyzed(
+            reason=f"op.alter_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    if not (isinstance(first_arg.value, str) and isinstance(sec_arg.value, str)):
+        return NotAnalyzed(
+            reason=f"op.alter_column arguments aren't strings: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    new_name: str | None = None
+
+    for keyword in node.keywords:
+        if keyword.arg != "new_column_name":
+            continue
+
+        if not (
+            isinstance(keyword.value, Constant) and isinstance(keyword.value.value, str)
+        ):
+            return NotAnalyzed(
+                reason=f"Found it, but it isn't a string literal: {short(unparse(node))}",
+                source_file=source_file,
+                line=node.lineno,
+            )
+
+        new_name = keyword.value.value
+
+    if new_name is None:
+        return NotAnalyzed(
+            reason=f"No new_column_name, so not a rename query: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    table = first_arg.value
+    column = sec_arg.value
+    return SchemaChange(
+        kind=ChangeKind.RENAME_COLUMN,
+        table=table,
+        column=column,
+        new_name=new_name,
         source_file=source_file,
         line=node.lineno,
     )
