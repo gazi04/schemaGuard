@@ -236,3 +236,14 @@ def _parse_rename_column(node: Call, source_file: str) -> SchemaChange | NotAnal
         line=node.lineno,
     )
 
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    file = Path.cwd() / "tests/fixtures/alembic/rename_column.py"
+    source: str = ""
+
+    with file.open(encoding="utf-8") as f:
+        for line in f:
+            source += line
+    parse_alembic(source, "dummy_file.py")
