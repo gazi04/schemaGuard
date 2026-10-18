@@ -1,4 +1,4 @@
-from ast import Attribute, Call, Constant, Expr, FunctionDef, Name, dump, parse, unparse
+from ast import Attribute, Call, Constant, Expr, FunctionDef, Name, parse, unparse
 
 from schemaguard.migrations.changes import (
     ChangeKind,
@@ -211,7 +211,7 @@ def _parse_rename_column(node: Call, source_file: str) -> SchemaChange | NotAnal
             isinstance(keyword.value, Constant) and isinstance(keyword.value.value, str)
         ):
             return NotAnalyzed(
-                reason=f"Found it, but it isn't a string literal: {short(unparse(node))}",
+                reason=f"op.alter_column new_column_name isn't a string literal: {short(unparse(node))}",
                 source_file=source_file,
                 line=node.lineno,
             )
@@ -220,7 +220,7 @@ def _parse_rename_column(node: Call, source_file: str) -> SchemaChange | NotAnal
 
     if new_name is None:
         return NotAnalyzed(
-            reason=f"No new_column_name, so not a rename query: {short(unparse(node))}",
+            reason=f"op.alter_column has no supported keyword: {short(unparse(node))}",
             source_file=source_file,
             line=node.lineno,
         )
