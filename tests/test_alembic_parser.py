@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from schemaguard.migrations.alembic import parse_alembic
 from schemaguard.migrations.changes import ChangeKind
 
@@ -61,3 +63,41 @@ def test_rename_table():
     assert change.table == "customers"
     assert change.new_name == "accounts"
     assert change.line == 18
+
+
+@pytest.mark.parametrize(
+    "call, keyword",
+    [
+        ('op.alter_column("customers", "a")', "op.alter_column not checked:"),
+        (
+            'op.alter_column("customers", "a", new_column_name=x)',
+            "op.alter_column new_column_name isn't a string literal:",
+        ),
+        (
+            'op.alter_column("customers", column_name="a", new_column_name="b")',
+            "op.alter_column not checked:",
+        ),
+        (
+            'op.alter_column("customers", "a", **opts)',
+            "op.alter_column has no supported keyword:",
+        ),
+        ("op.drop_table(name)", "op.drop_table not checked:"),
+        ('op.rename_table("customers")', "op.rename_table not checked:"),
+        (
+            'op.create_index("ix_email", "customers", ["email"])',
+            "op.create_index not checked",
+        ),
+        ('print("hi")', "Non-op call not checked:"),
+        ("x = 1", "Statement not checked:"),
+    ],
+)
+def test_not_analyzed(call: str, keyword: str):
+    source = f"def upgrade(): \n    {call}\n"
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 1
+
+    entry = result.not_analyzed[0]
+    assert keyword in entry.reason
+    assert entry.source_file == SOURCE_FILE
