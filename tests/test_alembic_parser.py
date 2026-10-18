@@ -68,7 +68,10 @@ def test_rename_table():
 @pytest.mark.parametrize(
     "call, keyword",
     [
-        ('op.alter_column("customers", "a")', "op.alter_column not checked:"),
+        (
+            'op.alter_column("customers", "a")',
+            "op.alter_column has no supported keyword:",
+        ),
         (
             'op.alter_column("customers", "a", new_column_name=x)',
             "op.alter_column new_column_name isn't a string literal:",
@@ -79,7 +82,7 @@ def test_rename_table():
         ),
         (
             'op.alter_column("customers", "a", **opts)',
-            "op.alter_column has no supported keyword:",
+            "op.alter_column **kwargs not checked:",
         ),
         ("op.drop_table(name)", "op.drop_table not checked:"),
         ('op.rename_table("customers")', "op.rename_table not checked:"),
