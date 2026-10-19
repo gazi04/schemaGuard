@@ -63,6 +63,8 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
             results.append(_parse_drop_column(call, source_file))
         elif call.func.attr == "alter_column":
             results.extend(_parse_alter_column(call, source_file))
+        elif call.func.attr == "add_column":
+            results.append(_parse_add_column(call, source_file))
         else:
             results.append(
                 NotAnalyzed(
@@ -308,6 +310,68 @@ def _parse_alter_column(
             line=node.lineno,
         )
     ]
+
+
+def _parse_add_column(node: Call, source_file: str) -> SchemaChange | NotAnalyzed:
+    if len(node.args) < 2:
+        return NotAnalyzed(
+            reason=f"op.add_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    first_arg = node.args[0]
+    column_node = node.args[1]
+    if not (isinstance(first_arg, Constant) and isinstance(first_arg.value, str)):
+        return NotAnalyzed(
+            reason=f"op.add_column not checked: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    if not isinstance(column_node, Call):
+        return NotAnalyzed(
+            reason=f"op.add_column column isn't a Column() call: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    func = column_node.func
+
+    if not (
+        (isinstance(func, Attribute) and func.attr == "Column")
+        or (isinstance(func, Name) and func.id == "Column")
+    ):
+        return NotAnalyzed(
+            reason=f"op.add_column not checked because of arguments: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    if len(column_node.args) < 1:
+        return NotAnalyzed(
+            reason=f"op.add_column Column(...) has no name: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    column_arg = column_node.args[0]
+    if not (isinstance(column_arg, Constant) and isinstance(column_arg.value, str)):
+        return NotAnalyzed(
+            reason=f"op.add_column column name isn't a string literal: {short(unparse(node))}",
+            source_file=source_file,
+            line=node.lineno,
+        )
+
+    new_type = None if len(column_node.args) < 2 else unparse(column_node.args[1])
+    return SchemaChange(
+        kind=ChangeKind.ADD_COLUMN,
+        table=first_arg.value,
+        column=column_arg.value,
+        new_type=new_type,
+        source_file=source_file,
+        line=node.lineno,
+    )
 
 
 if __name__ == "__main__":
