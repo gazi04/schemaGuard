@@ -282,6 +282,23 @@ def test_no_upgrade():
     assert entry.line == 1
 
 
+def test_docstring_skipped():
+    source = 'def upgrade():\n    """Upgrade schema."""\n    op.drop_table("x")\n'
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+    assert result.changes[0].kind is ChangeKind.DROP_TABLE
+
+
+def test_pass_skipped():
+    source = 'def upgrade():\n    """Upgrade schema."""\n    pass\n'
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 0
+
+
 def test_two_ops():
     source = (
         "def upgrade():\n"
