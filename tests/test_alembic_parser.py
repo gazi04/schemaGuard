@@ -56,6 +56,40 @@ def test_alter_nullability():
     assert change.line == 19
 
 
+def test_alter_column_keyword_order():
+    call = (
+        'op.alter_column("orders", "amount", '
+        "type_=sa.BigInteger(), existing_type=sa.Integer())"
+    )
+    source = f"def upgrade(): \n    {call}\n"
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.ALTER_TYPE
+    assert change.old_type == "sa.Integer()"
+
+
+def test_alter_column_several_changes():
+    call = (
+        'op.alter_column("customers", "email", '
+        'new_column_name="email_address", nullable=False)'
+    )
+    source = f"def upgrade(): \n    {call}\n"
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 2
+    assert len(result.not_analyzed) == 0
+
+    assert [c.kind for c in result.changes] == [
+        ChangeKind.RENAME_COLUMN,
+        ChangeKind.ALTER_NULLABILITY,
+    ]
+    assert [c.column for c in result.changes] == ["email", "email"]
+
+
 def test_drop_column():
     result = parse_alembic(load("drop_column.py"), SOURCE_FILE)
 
@@ -139,6 +173,10 @@ def test_rename_table():
         ),
         (
             'op.alter_column("customers", "a", new_column_name=x)',
+            "op.alter_column new_column_name isn't a string literal:",
+        ),
+        (
+            'op.alter_column("customers", "a", new_column_name=5)',
             "op.alter_column new_column_name isn't a string literal:",
         ),
         (
@@ -230,3 +268,49 @@ def test_execute_multiple_statements():
     assert result.changes[0].column == "email"
     assert result.changes[1].table == "orders"
     assert [c.line for c in result.changes] == [2, 2]
+
+
+def test_no_upgrade():
+    source = 'def downgrade():\n    op.drop_table("x")\n'
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 1
+
+    entry = result.not_analyzed[0]
+    assert entry.reason == "No upgrade() function found"
+    assert entry.line == 1
+
+
+def test_two_ops():
+    source = (
+        "def upgrade():\n"
+        '    op.drop_column("customers", "email")\n'
+        '    op.drop_table("orders")\n'
+    )
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 2
+    assert len(result.not_analyzed) == 0
+
+    assert [c.kind for c in result.changes] == [
+        ChangeKind.DROP_COLUMN,
+        ChangeKind.DROP_TABLE,
+    ]
+    assert [c.line for c in result.changes] == [2, 3]
+
+
+def test_good_and_bad_ops():
+    source = (
+        "def upgrade():\n"
+        '    op.drop_table("orders")\n'
+        '    op.create_index("ix", "customers", ["email"])\n'
+        '    op.drop_column("customers", "email")\n'
+    )
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 2
+    assert len(result.not_analyzed) == 1
+
+    assert [c.line for c in result.changes] == [2, 4]
+    assert result.not_analyzed[0].line == 3
