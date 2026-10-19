@@ -1,4 +1,14 @@
-from ast import Attribute, Call, Constant, Expr, FunctionDef, Name, parse, unparse
+from ast import (
+    Attribute,
+    Call,
+    Constant,
+    Expr,
+    FunctionDef,
+    Name,
+    Pass,
+    parse,
+    unparse,
+)
 
 from schemaguard.migrations.changes import (
     ChangeKind,
@@ -31,6 +41,14 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
         return ChangeSet(changes=(), not_analyzed=tuple(not_analyzed))
 
     for node in upgrade_node.body:
+        # docstrings, bare strings and pass do nothing
+        if isinstance(node, Pass) or (
+            isinstance(node, Expr)
+            and isinstance(node.value, Constant)
+            and isinstance(node.value.value, str)
+        ):
+            continue
+
         if not (isinstance(node, Expr) and isinstance(node.value, Call)):
             results.append(
                 NotAnalyzed(
