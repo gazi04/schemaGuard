@@ -27,6 +27,35 @@ def test_rename_column():
     assert change.line == 18
 
 
+def test_alter_type():
+    result = parse_alembic(load("alter_type.py"), SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.ALTER_TYPE
+    assert change.table == "orders"
+    assert change.column == "amount"
+    assert change.new_type == "sa.BigInteger()"
+    assert change.old_type == "sa.Integer()"
+    assert change.line == 19
+
+
+def test_alter_nullability():
+    result = parse_alembic(load("alter_nullability.py"), SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.ALTER_NULLABILITY
+    assert change.table == "customers"
+    assert change.column == "email"
+    assert change.nullable is True
+    assert change.line == 19
+
+
 def test_drop_column():
     result = parse_alembic(load("drop_column.py"), SOURCE_FILE)
 
