@@ -1,9 +1,16 @@
+from pathlib import Path
+
 import pytest
 
 from schemaguard.migrations.changes import ChangeKind, ChangeSet
 from schemaguard.migrations.sql import parse_sql
 
+FIXTURES = Path(__file__).parent / "fixtures" / "sql"
 DUMMY_FILE_NAME = "source.sql"
+
+
+def load(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
 
 
 def test_rename_query():
@@ -290,3 +297,86 @@ def test_unsupported_sql_is_reported(query: str, keyword: str):
     entry = result.not_analyzed[0]
     assert keyword in entry.reason
     assert entry.source_file == DUMMY_FILE_NAME
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        (
+            "add_column.sql",
+            (ChangeKind.ADD_COLUMN, "customers", "signup_date", None, "DATE", None),
+        ),
+        (
+            "drop_column.sql",
+            (ChangeKind.DROP_COLUMN, "customers", "signup_date", None, None, None),
+        ),
+        (
+            "rename_column.sql",
+            (
+                ChangeKind.RENAME_COLUMN,
+                "customers",
+                "signup_date",
+                "created_at",
+                None,
+                None,
+            ),
+        ),
+        (
+            "alter_type.sql",
+            (ChangeKind.ALTER_TYPE, "orders", "amount", None, "BIGINT", None),
+        ),
+        (
+            "alter_nullability.sql",
+            (ChangeKind.ALTER_NULLABILITY, "customers", "email", None, None, True),
+        ),
+        (
+            "drop_table.sql",
+            (ChangeKind.DROP_TABLE, "items", None, None, None, None),
+        ),
+        (
+            "rename_table.sql",
+            (ChangeKind.RENAME_TABLE, "customers", None, "accounts", None, None),
+        ),
+    ],
+)
+def test_sql_fixture(
+    name: str,
+    expected: tuple[ChangeKind, str, str | None, str | None, str | None, bool | None],
+):
+    result = parse_sql(load(name), name)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert (
+        change.kind,
+        change.table,
+        change.column,
+        change.new_name,
+        change.new_type,
+        change.nullable,
+    ) == expected
+    assert change.source_file == name
+    # parse_sql gives every change the line it is passed (default 1)
+    assert change.line == 1
+
+
+def test_sql_fixture_unsupported():
+    result = parse_sql(load("unsupported.sql"), "unsupported.sql")
+
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 1
+    assert "CREATE INDEX" in result.not_analyzed[0].reason
+
+
+def test_sql_fixture_mixed():
+    result = parse_sql(load("mixed.sql"), "mixed.sql")
+
+    assert [c.kind for c in result.changes] == [
+        ChangeKind.DROP_COLUMN,
+        ChangeKind.RENAME_COLUMN,
+    ]
+    assert len(result.not_analyzed) == 2
+    assert "BEGIN" in result.not_analyzed[0].reason
+    assert "COMMIT" in result.not_analyzed[1].reason
