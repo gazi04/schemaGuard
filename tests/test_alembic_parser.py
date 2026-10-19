@@ -40,6 +40,42 @@ def test_drop_column():
     assert change.line == 19
 
 
+def test_add_column():
+    result = parse_alembic(load("add_column.py"), SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.ADD_COLUMN
+    assert change.table == "customers"
+    assert change.column == "signup_date"
+    assert change.new_type == "sa.Date()"
+    assert change.line == 19
+
+
+@pytest.mark.parametrize(
+    "call, new_type",
+    [
+        ('op.add_column("customers", sa.Column("x"))', None),
+        ('op.add_column("customers", Column("x", Integer()))', "Integer()"),
+    ],
+)
+def test_add_column_inline(call: str, new_type: str | None):
+    source = f"def upgrade(): \n    {call}\n"
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.ADD_COLUMN
+    assert change.table == "customers"
+    assert change.column == "x"
+    assert change.new_type == new_type
+    assert change.source_file == SOURCE_FILE
+
+
 def test_drop_table():
     result = parse_alembic(load("drop_table.py"), SOURCE_FILE)
 
@@ -83,6 +119,24 @@ def test_rename_table():
         (
             'op.alter_column("customers", "a", **opts)',
             "op.alter_column **kwargs not checked:",
+        ),
+        ('op.add_column("customers")', "op.add_column not checked:"),
+        ('op.add_column(t, sa.Column("x"))', "op.add_column not checked:"),
+        (
+            'op.add_column("customers", col)',
+            "op.add_column column isn't a Column() call:",
+        ),
+        (
+            'op.add_column("customers", sa.Index("x"))',
+            "op.add_column not checked because of arguments:",
+        ),
+        (
+            'op.add_column("customers", sa.Column())',
+            "op.add_column Column(...) has no name:",
+        ),
+        (
+            'op.add_column("customers", sa.Column(name))',
+            "op.add_column column name isn't a string literal:",
         ),
         ("op.drop_table(name)", "op.drop_table not checked:"),
         ('op.rename_table("customers")', "op.rename_table not checked:"),
