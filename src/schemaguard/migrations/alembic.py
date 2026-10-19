@@ -346,7 +346,7 @@ def _parse_add_column(node: Call, source_file: str) -> SchemaChange | NotAnalyze
         or (isinstance(func, Name) and func.id == "Column")
     ):
         return NotAnalyzed(
-            reason=f"op.add_column not checked because of arguments: {short(unparse(node))}",
+            reason=f"op.add_column column isn't a Column() call: {short(unparse(node))}",
             source_file=source_file,
             line=node.lineno,
         )
@@ -400,15 +400,3 @@ def _parse_execute(node: Call, source_file: str) -> list[SchemaChange | NotAnaly
     sql = arg.value
     change_set = parse_sql(sql, source_file, line=node.lineno)
     return list(change_set.changes) + list(change_set.not_analyzed)
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-
-    file = Path.cwd() / "tests/fixtures/alembic/rename_column.py"
-    source: str = ""
-
-    with file.open(encoding="utf-8") as f:
-        for line in f:
-            source += line
-    parse_alembic(source, "dummy_file.py")

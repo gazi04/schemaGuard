@@ -128,7 +128,7 @@ def test_rename_table():
         ),
         (
             'op.add_column("customers", sa.Index("x"))',
-            "op.add_column not checked because of arguments:",
+            "op.add_column column isn't a Column() call:",
         ),
         (
             'op.add_column("customers", sa.Column())',
