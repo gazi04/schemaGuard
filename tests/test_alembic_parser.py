@@ -138,6 +138,16 @@ def test_rename_table():
             'op.add_column("customers", sa.Column(name))',
             "op.add_column column name isn't a string literal:",
         ),
+        ("op.execute()", "op.execute not checked:"),
+        (
+            'op.execute(f"DROP TABLE {t}")',
+            "op.execute argument isn't a string literal:",
+        ),
+        (
+            'op.execute(sa.text("DROP TABLE x"))',
+            "op.execute argument isn't a string literal:",
+        ),
+        ('op.execute("SELECT 1")', "Statement not checked: SELECT 1"),
         ("op.drop_table(name)", "op.drop_table not checked:"),
         ('op.rename_table("customers")', "op.rename_table not checked:"),
         (
@@ -158,3 +168,36 @@ def test_not_analyzed(call: str, keyword: str):
     entry = result.not_analyzed[0]
     assert keyword in entry.reason
     assert entry.source_file == SOURCE_FILE
+
+
+def test_execute():
+    result = parse_alembic(load("execute.py"), SOURCE_FILE)
+
+    assert len(result.changes) == 1
+    assert len(result.not_analyzed) == 0
+
+    change = result.changes[0]
+    assert change.kind is ChangeKind.RENAME_COLUMN
+    assert change.table == "customers"
+    assert change.column == "email"
+    assert change.new_name == "email_address"
+    assert change.source_file == SOURCE_FILE
+    assert change.line == 18
+
+
+def test_execute_multiple_statements():
+    call = 'op.execute("ALTER TABLE customers DROP COLUMN email; DROP TABLE orders")'
+    source = f"def upgrade(): \n    {call}\n"
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 2
+    assert len(result.not_analyzed) == 0
+
+    assert [c.kind for c in result.changes] == [
+        ChangeKind.DROP_COLUMN,
+        ChangeKind.DROP_TABLE,
+    ]
+    assert result.changes[0].table == "customers"
+    assert result.changes[0].column == "email"
+    assert result.changes[1].table == "orders"
+    assert [c.line for c in result.changes] == [2, 2]
