@@ -6,6 +6,7 @@ from schemaguard.migrations.changes import (
     NotAnalyzed,
     SchemaChange,
 )
+from schemaguard.migrations.sql import parse_sql
 from schemaguard.migrations.text import short
 
 
@@ -65,6 +66,8 @@ def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
             results.extend(_parse_alter_column(call, source_file))
         elif call.func.attr == "add_column":
             results.append(_parse_add_column(call, source_file))
+        elif call.func.attr == "execute":
+            results.extend(_parse_execute(call, source_file))
         else:
             results.append(
                 NotAnalyzed(
@@ -372,6 +375,31 @@ def _parse_add_column(node: Call, source_file: str) -> SchemaChange | NotAnalyze
         source_file=source_file,
         line=node.lineno,
     )
+
+
+def _parse_execute(node: Call, source_file: str) -> list[SchemaChange | NotAnalyzed]:
+    if not node.args:
+        return [
+            NotAnalyzed(
+                reason=f"op.execute not checked: {short(unparse(node))}",
+                source_file=source_file,
+                line=node.lineno,
+            )
+        ]
+
+    arg = node.args[0]
+    if not (isinstance(arg, Constant) and isinstance(arg.value, str)):
+        return [
+            NotAnalyzed(
+                reason=f"op.execute argument isn't a string literal: {short(unparse(node))}",
+                source_file=source_file,
+                line=node.lineno,
+            )
+        ]
+
+    sql = arg.value
+    change_set = parse_sql(sql, source_file, line=node.lineno)
+    return list(change_set.changes) + list(change_set.not_analyzed)
 
 
 if __name__ == "__main__":
