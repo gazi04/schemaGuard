@@ -22,7 +22,15 @@ from schemaguard.migrations.text import short
 
 def parse_alembic(source: str, source_file: str, line: int = 1) -> ChangeSet:
     results: list[SchemaChange | NotAnalyzed] = []
-    tree = parse(source)
+    try:
+        tree = parse(source)
+    except SyntaxError as error:
+        not_analyzed = NotAnalyzed(
+            reason=f"Python syntax error: {error.msg}",
+            source_file=source_file,
+            line=error.lineno or line,
+        )
+        return ChangeSet(changes=(), not_analyzed=(not_analyzed,))
 
     upgrade_node: FunctionDef | None = None
     for node in tree.body:

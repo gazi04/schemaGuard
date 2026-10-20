@@ -282,6 +282,18 @@ def test_no_upgrade():
     assert entry.line == 1
 
 
+def test_syntax_error():
+    source = 'def upgrade():\n    op.drop_table("x"\n'
+    result = parse_alembic(source, SOURCE_FILE)
+
+    assert len(result.changes) == 0
+    assert len(result.not_analyzed) == 1
+
+    entry = result.not_analyzed[0]
+    assert entry.reason.startswith("Python syntax error: ")
+    assert entry.line == 2
+
+
 def test_docstring_skipped():
     source = 'def upgrade():\n    """Upgrade schema."""\n    op.drop_table("x")\n'
     result = parse_alembic(source, SOURCE_FILE)
