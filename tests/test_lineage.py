@@ -2,7 +2,14 @@ from typing import Any
 
 import pytest
 
-from schemaguard.dbt.lineage import Downstream, downstream, find_source, split
+from schemaguard.dbt.lineage import (
+    Downstream,
+    Lineage,
+    downstream,
+    find_source,
+    first_hop,
+    split,
+)
 from schemaguard.dbt.manifest import Manifest
 
 
@@ -131,3 +138,22 @@ def test_split_keeps_order():
     result = split(manifest, items)
 
     assert result.models == items
+
+
+def test_first_hop():
+    lineage = Lineage(
+        models=(
+            Downstream(unique_id="model.a", depth=1),
+            Downstream(unique_id="model.b", depth=2),
+            Downstream(unique_id="model.c", depth=1),
+        ),
+        tests=(),
+        exposures=(),
+    )
+
+    result = first_hop(lineage)
+
+    assert result == (
+        Downstream(unique_id="model.a", depth=1),
+        Downstream(unique_id="model.c", depth=1),
+    )
