@@ -75,6 +75,58 @@ def test_downstream_chain():
     )
 
 
+def test_downstream_diamond():
+    manifest = make_manifest(
+        child_map={
+            "source.demo.ecom.raw_customers": ["model.a", "model.b"],
+            "model.a": ["model.c"],
+            "model.b": ["model.c"],
+        }
+    )
+    result = downstream(manifest, "source.demo.ecom.raw_customers")
+
+    assert result == (
+        Downstream(unique_id="model.a", depth=1),
+        Downstream(unique_id="model.b", depth=1),
+        Downstream(unique_id="model.c", depth=2),
+    )
+
+
+def test_downstream_shortest_depth():
+    manifest = make_manifest(
+        child_map={
+            "source.demo.ecom.raw_customers": ["model.a", "model.c"],
+            "model.a": ["model.b"],
+            "model.b": ["model.c"],
+        }
+    )
+    result = downstream(manifest, "source.demo.ecom.raw_customers")
+
+    assert result == (
+        Downstream(unique_id="model.a", depth=1),
+        Downstream(unique_id="model.c", depth=1),
+        Downstream(unique_id="model.b", depth=2),
+    )
+
+
+def test_downstream_no_children():
+    manifest = make_manifest(
+        child_map={
+            "source.demo.ecom.raw_customers": [],
+        }
+    )
+    result = downstream(manifest, "source.demo.ecom.raw_customers")
+
+    assert result == ()
+
+
+def test_downstream_missing_key():
+    manifest = make_manifest(child_map={"source.demo.ecom.raw_customers": ["model.a"]})
+    result = downstream(manifest, "source.demo.ecom.raw_customers")
+
+    assert result == (Downstream(unique_id="model.a", depth=1),)
+
+
 def test_split_groups_by_type():
     manifest = make_manifest(
         nodes={
