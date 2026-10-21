@@ -61,3 +61,7 @@ def split(manifest: Manifest, items: tuple[Downstream, ...]) -> Lineage:
             exposures.append(item)
 
     return Lineage(models=tuple(models), tests=tuple(tests), exposures=tuple(exposures))
+
+
+def first_hop(lineage: Lineage) -> tuple[Downstream, ...]:
+    return tuple(model for model in lineage.models if model.depth == 1)
