@@ -1,0 +1,77 @@
+{
+  "sources": {
+    "source.demo.app.customers": {
+      "unique_id": "source.demo.app.customers",
+      "source_name": "app",
+      "name": "customers",
+      "identifier": "app_customers"
+    }
+  },
+  "nodes": {
+    "model.demo.stg_customers": {
+      "unique_id": "model.demo.stg_customers",
+      "resource_type": "model",
+      "name": "stg_customers",
+      "depends_on": { "nodes": [] },
+      "compiled_code": "with source as (select * from app.app_customers), renamed as (select id as customer_id, name as customer_name from source) select * from renamed"
+    },
+    "model.demo.raw_dump": {
+      "unique_id": "model.demo.raw_dump",
+      "resource_type": "model",
+      "name": "raw_dump",
+      "depends_on": { "nodes": [] },
+      "compiled_code": "select * from app.app_customers"
+    },
+    "model.demo.stg_uncompiled": {
+      "unique_id": "model.demo.stg_uncompiled",
+      "resource_type": "model",
+      "name": "stg_uncompiled",
+      "depends_on": { "nodes": [] }
+    },
+    "model.demo.customer_stats": {
+      "unique_id": "model.demo.customer_stats",
+      "resource_type": "model",
+      "name": "customer_stats",
+      "depends_on": { "nodes": [] },
+      "compiled_code": "select customer_id from stg_customers"
+    },
+    "model.demo.report": {
+      "unique_id": "model.demo.report",
+      "resource_type": "model",
+      "name": "report",
+      "depends_on": { "nodes": [] },
+      "compiled_code": "select * from customer_stats"
+    },
+    "test.demo.not_null_stg_customers_id": {
+      "unique_id": "test.demo.not_null_stg_customers_id",
+      "resource_type": "test",
+      "name": "not_null_stg_customers_id",
+      "depends_on": { "nodes": [] },
+      "column_name": "customer_id",
+      "attached_node": "model.demo.stg_customers"
+    }
+  },
+  "child_map": {
+    "source.demo.app.customers": [
+      "model.demo.stg_customers",
+      "model.demo.raw_dump",
+      "model.demo.stg_uncompiled"
+    ],
+    "model.demo.stg_customers": [
+      "model.demo.customer_stats",
+      "test.demo.not_null_stg_customers_id"
+    ],
+    "model.demo.raw_dump": ["model.demo.report"],
+    "model.demo.stg_uncompiled": [],
+    "model.demo.customer_stats": ["model.demo.report"],
+    "model.demo.report": ["exposure.demo.dashboard"],
+    "test.demo.not_null_stg_customers_id": [],
+    "exposure.demo.dashboard": []
+  },
+  "exposures": {
+    "exposure.demo.dashboard": {
+      "unique_id": "exposure.demo.dashboard",
+      "name": "dashboard"
+    }
+  }
+}
