@@ -17,6 +17,11 @@ def _is_star(projection: exp.Expr) -> bool:
 
 
 def _star_reaches(scope: Scope, table: str) -> bool:
+    if scope.set_operation_scopes:
+        return any(
+            _star_reaches(branch, table) for branch in scope.set_operation_scopes
+        )
+
     select = scope.expression
 
     if not isinstance(select, exp.Select):

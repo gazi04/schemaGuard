@@ -45,6 +45,11 @@ def test_column_usage_count():
         (None, set[str](), True),
         ("", set[str](), True),
         ("select from where", set[str](), True),
+        (
+            "select id from raw_customers union all select * from raw_customers",
+            {"id"},
+            True,
+        ),
     ],
 )
 def test_column_usage_star(sql: str | None, columns: set[str], uncertain: bool):
