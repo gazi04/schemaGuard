@@ -2,7 +2,17 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
+from schemaguard.dbt.columns import ColumnUsage, column_usage
+from schemaguard.dbt.lineage import (
+    Downstream,
+    downstream,
+    find_source,
+    first_hop,
+    split,
+)
+from schemaguard.dbt.manifest import Manifest
 from schemaguard.migrations import (
     ChangeKind,
     NotAnalyzed,
@@ -47,6 +57,51 @@ def parse(
         typer.echo(line)
 
 
+@app.command()
+def lineage(
+    source: Annotated[
+        str,
+        typer.Argument(help="dbt source as <source>.<table>, e.g. ecom.raw_customers"),
+    ],
+    manifest: Annotated[
+        Path, typer.Option(exists=True, dir_okay=False, readable=True)
+    ] = Path("target/manifest.json"),
+) -> None:
+    """Print the dbt models downstream of a source"""
+
+    source_name, dot, table_name = source.partition(".")
+
+    if not dot or not all([source_name, table_name]):
+        typer.echo(
+            "Error: expected <source>.<table>, e.g. ecom.raw_customers", err=True
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        m = Manifest.model_validate_json(manifest.read_text(encoding="utf-8"))
+    except ValidationError as e:
+        typer.echo(f"Error: {manifest} is not a valid dbt manifest", err=True)
+        raise typer.Exit(code=2) from e
+
+    source_id = find_source(m, source_name, table_name)
+
+    if source_id is None:
+        typer.echo(f"Error: unknown source {source}", err=True)
+        raise typer.Exit(code=2)
+
+    source_node = m.sources[source_id]
+
+    items = downstream(m, source_id)
+    lin = split(m, items)
+    hops = first_hop(lin)
+    typer.echo(lin)
+
+    usages: dict[str, ColumnUsage] = {}
+    for d in hops:
+        node = m.nodes[d.unique_id]
+        usages[d.unique_id] = column_usage(node.compiled_code, source_node.identifier)
+
+
 def format_change(change: SchemaChange) -> str:
     target = change.table
 
@@ -72,3 +127,22 @@ def format_change(change: SchemaChange) -> str:
 def format_not_analyzed(entry: NotAnalyzed) -> str:
     location = f"{entry.source_file}:{entry.line}"
     return f"{location} {'not_analyzed':<17} {entry.reason}"
+
+
+def format_columns(usage: ColumnUsage) -> str:
+    names = ", ".join(sorted(usage.columns))
+
+    if not usage.uncertain:
+        return f"columns: {names or 'none'}"
+    if names:
+        return f"columns: {names} (uncertain)"
+    return "columns: uncertain"
+
+
+def format_model(item: Downstream, name: str, usage: ColumnUsage | None) -> str:
+    line = f"  hop {item.depth}  {name:<20}"
+
+    if usage is not None:
+        line = f"{line} {format_columns(usage)}"
+
+    return line.rstrip()
