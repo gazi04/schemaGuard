@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from schemaguard.dbt.lineage import downstream, find_source, split
+from schemaguard.dbt.lineage import (
+    Downstream,
+    downstream,
+    find_source,
+    first_hop,
+    split,
+)
 from schemaguard.dbt.manifest import Manifest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "dbt" / "manifest.json"
@@ -81,3 +87,19 @@ def test_split_fixture():
 
     exposures = [d.unique_id for d in lineage.exposures]
     assert exposures == ["exposure.demo.dashboard"]
+
+
+def test_first_hop_fixture():
+    m = load()
+    start = find_source(m, "app", "customers")
+    assert start is not None
+
+    items = downstream(m, start)
+    lineage = split(m, items)
+
+    result = first_hop(lineage)
+    assert result == (
+        Downstream(unique_id="model.demo.stg_customers", depth=1),
+        Downstream(unique_id="model.demo.raw_dump", depth=1),
+        Downstream(unique_id="model.demo.stg_uncompiled", depth=1),
+    )
