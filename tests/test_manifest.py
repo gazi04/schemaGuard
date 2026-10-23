@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from schemaguard.dbt.lineage import downstream, find_source
+from schemaguard.dbt.lineage import downstream, find_source, split
 from schemaguard.dbt.manifest import Manifest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "dbt" / "manifest.json"
@@ -47,8 +47,8 @@ def test_downstream_order():
     start = find_source(m, "app", "customers")
     assert start is not None
 
-    result = downstream(m, start)
-    pairs = [(d.unique_id, d.depth) for d in result]
+    items = downstream(m, start)
+    pairs = [(d.unique_id, d.depth) for d in items]
     assert pairs == [
         ("model.demo.stg_customers", 1),
         ("model.demo.raw_dump", 1),
@@ -58,3 +58,26 @@ def test_downstream_order():
         ("model.demo.report", 2),
         ("exposure.demo.dashboard", 3),
     ]
+
+
+def test_split_fixture():
+    m = load()
+    start = find_source(m, "app", "customers")
+    assert start is not None
+
+    items = downstream(m, start)
+    lineage = split(m, items)
+    models = [d.unique_id for d in lineage.models]
+    assert models == [
+        "model.demo.stg_customers",
+        "model.demo.raw_dump",
+        "model.demo.stg_uncompiled",
+        "model.demo.customer_stats",
+        "model.demo.report",
+    ]
+
+    tests = [d.unique_id for d in lineage.tests]
+    assert tests == ["test.demo.not_null_stg_customers_id"]
+
+    exposures = [d.unique_id for d in lineage.exposures]
+    assert exposures == ["exposure.demo.dashboard"]
