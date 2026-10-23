@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from schemaguard.dbt.columns import ColumnUsage, column_usage
 from schemaguard.dbt.lineage import (
     Downstream,
     downstream,
@@ -16,6 +17,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "dbt" / "manifest.json"
 
 def load() -> Manifest:
     return Manifest.model_validate_json(FIXTURES.read_text(encoding="utf-8"))
+
+
+def usage(model_id: str) -> ColumnUsage:
+    m = load()
+    start = find_source(m, "app", "customers")
+    assert start is not None
+
+    table = m.sources[start].identifier
+    return column_usage(m.nodes[model_id].compiled_code, table)
 
 
 def test_load_counts():
@@ -103,3 +113,18 @@ def test_first_hop_fixture():
         Downstream(unique_id="model.demo.raw_dump", depth=1),
         Downstream(unique_id="model.demo.stg_uncompiled", depth=1),
     )
+
+
+@pytest.mark.parametrize(
+    "model_id, columns, uncertain",
+    [
+        ("model.demo.stg_customers", {"id", "name"}, False),
+        ("model.demo.raw_dump", set[str](), True),
+        ("model.demo.stg_uncompiled", set[str](), True),
+    ],
+)
+def test_column_usage_fixture(model_id: str, columns: set[str], uncertain: bool):
+    result = usage(model_id)
+
+    assert result.columns == columns
+    assert result.uncertain is uncertain
