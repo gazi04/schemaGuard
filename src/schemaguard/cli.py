@@ -79,7 +79,7 @@ def lineage(
 
     try:
         m = Manifest.model_validate_json(manifest.read_text(encoding="utf-8"))
-    except ValidationError as e:
+    except (ValidationError, UnicodeDecodeError) as e:
         typer.echo(f"Error: {manifest} is not a valid dbt manifest", err=True)
         raise typer.Exit(code=2) from e
 
