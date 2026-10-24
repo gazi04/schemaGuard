@@ -93,13 +93,35 @@ def lineage(
 
     items = downstream(m, source_id)
     lin = split(m, items)
-    hops = first_hop(lin)
-    typer.echo(lin)
 
     usages: dict[str, ColumnUsage] = {}
-    for d in hops:
+    uncompiled = False
+    for d in first_hop(lin):
         node = m.nodes[d.unique_id]
+        if not node.compiled_code:
+            uncompiled = True
         usages[d.unique_id] = column_usage(node.compiled_code, source_node.identifier)
+
+    typer.echo(f"source {source}")
+
+    if not lin.models:
+        typer.echo("  no downstream models")
+
+    for item in lin.models:
+        name = m.nodes[item.unique_id].name
+        typer.echo(format_model(item, name, usages.get(item.unique_id)))
+
+    typer.echo(f"  tests: {len(lin.tests)}")
+
+    if lin.exposures:
+        names = ", ".join(m.exposures[e.unique_id].name for e in lin.exposures)
+        typer.echo(f"  exposures: {names}")
+
+    if uncompiled:
+        typer.echo(
+            "hint: some models have no compiled SQL; run dbt compile or dbt build",
+            err=True,
+        )
 
 
 def format_change(change: SchemaChange) -> str:
