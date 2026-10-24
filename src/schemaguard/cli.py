@@ -69,9 +69,9 @@ def lineage(
 ) -> None:
     """Print the dbt models downstream of a source"""
 
-    source_name, dot, table_name = source.partition(".")
+    source_name, _, table_name = source.partition(".")
 
-    if not dot or not all([source_name, table_name]):
+    if not source_name or not table_name:
         typer.echo(
             "Error: expected <source>.<table>, e.g. ecom.raw_customers", err=True
         )
