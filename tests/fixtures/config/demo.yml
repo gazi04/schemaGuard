@@ -1,0 +1,10 @@
+# schemaguard.yml for ../demoBackendRepo against ../demoDataRepo (jaffle_shop)
+manifest: dbt/manifest.json
+migrations: alembic/versions
+sources:
+  customers: ecom.raw_customers  # backend table -> dbt source
+  orders: ecom.raw_orders
+  items: ecom.raw_items
+ignore:
+  - alembic_version
+fail_on: risky
