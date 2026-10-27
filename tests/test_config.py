@@ -5,6 +5,7 @@ import pytest
 from schemaguard.config import ConfigError, FailOn, SourceRef, load_config
 
 FIXTURES = Path(__file__).parent / "fixtures" / "config"
+SOURCES = "sources:\n  customers: ecom.raw_customers\n"
 
 
 def load(file_name: str) -> str:
@@ -47,3 +48,25 @@ def test_source_with_two_dots():
     config = load_config("sources: \n customers: a.b.c")
     assert config.sources["customers"].source_name == "a"
     assert config.sources["customers"].table_name == "b.c"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("", "empty"),
+        ("# only a comment\n", "empty"),
+        ("- a\n- b\n", "mapping"),
+        ("hello\n", "mapping"),
+        ("a: [1", "Invalid YAML"),
+        ("!!python/object/apply:os.system ['echo hi']\n", "Invalid YAML"),
+        ("sources: {}\n", "at least 1 item"),
+        ("fail_on: never\n", "Field required"),
+        (SOURCES + "fail_ob: never\n", "fail_ob"),
+        (SOURCES + "fail_on: sometimes\n", "fail_on"),
+        (SOURCES + "ignore: customers\n", "ignore"),
+    ],
+)
+def test_load_error(text: str, expected: str):
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(text)
+    assert expected in str(exc_info.value)
