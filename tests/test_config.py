@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from schemaguard.config import ConfigError, FailOn, SourceRef, load_config
 
@@ -70,3 +72,28 @@ def test_load_error(text: str, expected: str):
     with pytest.raises(ConfigError) as exc_info:
         load_config(text)
     assert expected in str(exc_info.value)
+
+
+def test_ignore_overlap():
+    text = SOURCES + "  orders: ecom.raw_orders\nignore: [orders, customers]"
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(text)
+
+    assert "customers, orders" in str(exc_info.value)
+
+
+def test_config_is_frozen():
+    config = load_config(load("minimal.yml"))
+    with pytest.raises(ValidationError):
+        config.fail_on = FailOn.NEVER
+
+
+@pytest.mark.parametrize(
+    "text, cause_type", [("a: [1", yaml.YAMLError), ("sources: {}\n", ValidationError)]
+)
+def test_error_keeps_cause(text: str, cause_type: type[Exception]):
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(text)
+
+    assert isinstance(exc_info.value.__cause__, cause_type)
