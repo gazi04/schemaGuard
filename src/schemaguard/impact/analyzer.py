@@ -1,7 +1,16 @@
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, computed_field
 
 from schemaguard.config import Config, SourceRef
-from schemaguard.migrations import NotAnalyzed, SchemaChange
+from schemaguard.dbt.columns import ColumnUsage
+from schemaguard.migrations import ChangeKind, NotAnalyzed, SchemaChange
+
+
+class Match(StrEnum):
+    NONE = "none"
+    CERTAIN = "certain"
+    UNCERTAIN = "uncertain"
 
 
 class AffectedModel(BaseModel):
@@ -47,3 +56,26 @@ def find_ref(config: Config, table: str) -> SourceRef | None:
             return ref
 
     return None
+
+
+def match_first_hop(change: SchemaChange, usage: ColumnUsage) -> Match:
+    if change.kind is ChangeKind.ADD_COLUMN:
+        return Match.NONE
+
+    if change.kind in (ChangeKind.DROP_TABLE, ChangeKind.RENAME_TABLE):
+        return Match.CERTAIN
+
+    if change.column is None:
+        raise AnalyzerError(
+            f"{change.kind} on {change.table} has no column "
+            f"({change.source_file}:{change.line})"
+        )
+
+    used = {col.lower() for col in usage.columns}
+    if change.column.lower() in used:
+        return Match.CERTAIN
+
+    if usage.uncertain:
+        return Match.UNCERTAIN
+
+    return Match.NONE
