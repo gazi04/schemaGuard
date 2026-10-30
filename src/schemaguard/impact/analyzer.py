@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from schemaguard.config import Config, SourceRef
 from schemaguard.dbt.columns import ColumnUsage
+from schemaguard.dbt.lineage import downstream, split
+from schemaguard.dbt.manifest import Manifest
 from schemaguard.migrations import ChangeKind, NotAnalyzed, SchemaChange
 
 
@@ -79,3 +81,39 @@ def match_first_hop(change: SchemaChange, usage: ColumnUsage) -> Match:
         return Match.UNCERTAIN
 
     return Match.NONE
+
+
+def walk_affected(
+    manifest: Manifest, first_hop: dict[str, bool]
+) -> tuple[AffectedModel, ...]:
+    found: dict[str, tuple[int, bool]] = {}
+
+    def merge(uid: str, depth: int, uncertain: bool) -> None:
+        if uid not in found:
+            found[uid] = (depth, uncertain)
+        else:
+            old_depth, old_uncertain = found[uid]
+            depth = min(old_depth, depth)
+            uncertain = old_uncertain and uncertain
+            found[uid] = (depth, uncertain)
+
+    for uid, uncertain in first_hop.items():
+        merge(uid, 1, uncertain)
+        children = split(manifest, downstream(manifest, uid))
+
+        for child in children.models:
+            merge(child.unique_id, 1 + child.depth, uncertain)
+
+    result: list[AffectedModel] = []
+
+    for uid, (depth, uncertain) in found.items():
+        result.append(
+            AffectedModel(
+                unique_id=uid,
+                name=manifest.nodes[uid].name,
+                depth=depth,
+                uncertain=uncertain,
+            )
+        )
+
+    return tuple(sorted(result, key=lambda model: (model.depth, model.unique_id)))
