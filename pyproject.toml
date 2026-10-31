@@ -38,6 +38,13 @@ typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
 
+# Neovim runs pyrefly, not pyright. On a src layout pyrefly only searches src/,
+# so add the project root for `from tests.helper import ...`.
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+project-excludes = ["tests/fixtures"]
+search-path = ["src", "."]
+
 [tool.ruff.lint]
 # Beyond ruff's default E+F: B catches raise-without-from and mutable defaults,
 # ASYNC catches blocking calls in async functions, SIM/C4/RUF catch the rest.
