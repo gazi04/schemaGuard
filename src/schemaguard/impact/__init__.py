@@ -3,6 +3,7 @@ from schemaguard.impact.analyzer import (
     AnalyzerError,
     ChangeImpact,
     ImpactReport,
+    analyze,
 )
 
-__all__ = ["AffectedModel", "AnalyzerError", "ChangeImpact", "ImpactReport"]
+__all__ = ["AffectedModel", "AnalyzerError", "ChangeImpact", "ImpactReport", "analyze"]
