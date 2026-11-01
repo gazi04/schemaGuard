@@ -4,35 +4,39 @@ import pytest
 
 from schemaguard.config import SourceRef, load_config
 from schemaguard.dbt.columns import ColumnUsage
-from schemaguard.impact import AffectedModel
+from schemaguard.dbt.lineage import Lineage, downstream, split
+from schemaguard.dbt.manifest import Manifest
 from schemaguard.impact.analyzer import (
     AnalyzerError,
     Match,
+    analyze,
+    collect_tests_exposures,
     find_ref,
+    first_hop_matches,
     is_ignored,
     match_first_hop,
     walk_affected,
 )
-from schemaguard.migrations import ChangeKind, SchemaChange
-from tests.helper import make_manifest, node
+from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
+from tests.helper import make_manifest, node, summary
+
+SOURCE = "source.demo.ecom.raw_customers"
 
 CONFIG = load_config(
     "sources:\n  customers: ecom.raw_customers\nignore: [alembic_version]\n"
 )
 
 
-def change(kind: ChangeKind, column: str | None = "email") -> SchemaChange:
+def change(
+    kind: ChangeKind, column: str | None = "email", table: str = "customers"
+) -> SchemaChange:
     return SchemaChange(
-        kind=kind, table="customers", source_file="m.py", line=1, column=column
+        kind=kind, table=table, source_file="m.py", line=1, column=column
     )
 
 
 def usage(*columns: str, uncertain: bool = False) -> ColumnUsage:
     return ColumnUsage(columns=frozenset(columns), uncertain=uncertain)
-
-
-def summary(models: tuple[AffectedModel, ...]) -> list[tuple[str, int, bool]]:
-    return [(model.unique_id, model.depth, model.uncertain) for model in models]
 
 
 @pytest.mark.parametrize(
@@ -102,6 +106,52 @@ def test_match_first_hop_without_column():
 
 def models(*ids: str) -> dict[str, Any]:
     return {uid: node(uid, "model") for uid in ids}
+
+
+def compiled(uid: str, sql: str) -> dict[str, Any]:
+    return {**node(uid, "model"), "compiled_code": sql}
+
+
+def source_test(uid: str, column: str | None = None) -> dict[str, Any]:
+    if column is None:
+        return node(uid, "test")
+
+    return {**node(uid, "test"), "column_name": column}
+
+
+def first_hop_manifest() -> Manifest:
+    return make_manifest(
+        child_map={
+            SOURCE: ["model.uses", "model.unused", "model.star", "model.uncompiled"]
+        },
+        nodes={
+            "model.uses": compiled("model.uses", "select email from raw_customers"),
+            "model.unused": compiled("model.unused", "select id from raw_customers"),
+            "model.star": compiled("model.star", "select * from raw_customers"),
+            "model.uncompiled": node("model.uncompiled", "model"),
+        },
+    )
+
+
+def attached_manifest() -> Manifest:
+    return make_manifest(
+        child_map={
+            SOURCE: ["model.a", "test.src_email", "test.src_id", "test.src_table"],
+            "model.a": ["test.a_id", "exposure.e"],
+        },
+        nodes={
+            **models("model.a"),
+            "test.src_email": source_test("test.src_email", "Email"),
+            "test.src_id": source_test("test.src_id", "id"),
+            "test.src_table": source_test("test.src_table"),
+            "test.a_id": source_test("test.a_id", "id"),
+        },
+        exposures={"exposure.e": {"unique_id": "exposure.e", "name": "e"}},
+    )
+
+
+def source_lineage(manifest: Manifest) -> Lineage:
+    return split(manifest, downstream(manifest, SOURCE))
 
 
 def test_walk_affected_chain():
@@ -223,3 +273,119 @@ def test_walk_affected_empty():
     )
 
     assert walk_affected(manifest, {}) == ()
+
+
+def test_first_hop_matches_column_change():
+    manifest = first_hop_manifest()
+
+    result = first_hop_matches(
+        manifest,
+        source_lineage(manifest),
+        "raw_customers",
+        change(ChangeKind.DROP_COLUMN),
+    )
+
+    assert result == {"model.uses": False, "model.star": True, "model.uncompiled": True}
+
+
+def test_first_hop_matches_table_change():
+    manifest = first_hop_manifest()
+
+    result = first_hop_matches(
+        manifest,
+        source_lineage(manifest),
+        "raw_customers",
+        change(ChangeKind.DROP_TABLE, None),
+    )
+
+    assert result == {
+        "model.uses": False,
+        "model.unused": False,
+        "model.star": False,
+        "model.uncompiled": False,
+    }
+
+
+def test_collect_tests_exposures_column_change():
+    manifest = attached_manifest()
+    affected = walk_affected(manifest, {"model.a": False})
+
+    result = collect_tests_exposures(
+        manifest, source_lineage(manifest), change(ChangeKind.DROP_COLUMN), affected
+    )
+
+    assert result == (("test.a_id", "test.src_email"), ("e",))
+
+
+def test_collect_tests_exposures_table_change():
+    manifest = attached_manifest()
+    affected = walk_affected(manifest, {"model.a": False})
+
+    result = collect_tests_exposures(
+        manifest,
+        source_lineage(manifest),
+        change(ChangeKind.DROP_TABLE, None),
+        affected,
+    )
+
+    assert result == (
+        ("test.a_id", "test.src_email", "test.src_id", "test.src_table"),
+        ("e",),
+    )
+
+
+def test_collect_tests_exposures_no_affected_models():
+    manifest = attached_manifest()
+
+    result = collect_tests_exposures(
+        manifest, source_lineage(manifest), change(ChangeKind.DROP_COLUMN), ()
+    )
+
+    assert result == (("test.src_email",), ())
+
+
+def test_analyze_routes_changes():
+    dropped = change(ChangeKind.DROP_COLUMN)
+    ignored = change(ChangeKind.DROP_TABLE, None, table="alembic_version")
+    other = change(ChangeKind.DROP_TABLE, None, table="orders")
+    skipped = NotAnalyzed(reason="CREATE INDEX not checked", source_file="m.py", line=2)
+    change_set = ChangeSet(changes=(dropped, ignored, other), not_analyzed=(skipped,))
+
+    report = analyze(change_set, first_hop_manifest(), CONFIG)
+
+    assert len(report.impacts) == 1
+    impact = report.impacts[0]
+    assert impact.change == dropped
+    assert impact.source == SourceRef(source_name="ecom", table_name="raw_customers")
+    assert summary(impact.models) == [
+        ("model.star", 1, True),
+        ("model.uncompiled", 1, True),
+        ("model.uses", 1, False),
+    ]
+    assert impact.tests == ()
+    assert impact.exposures == ()
+    assert report.unmapped == (other,)
+    assert report.not_analyzed == (skipped,)
+
+
+def test_analyze_keeps_change_without_affected_models():
+    change_set = ChangeSet(changes=(change(ChangeKind.ADD_COLUMN),), not_analyzed=())
+
+    report = analyze(change_set, first_hop_manifest(), CONFIG)
+
+    assert len(report.impacts) == 1
+    impact = report.impacts[0]
+    assert impact.models == ()
+    assert impact.tests == ()
+    assert impact.exposures == ()
+    assert impact.uncertain is False
+
+
+def test_analyze_source_missing_from_manifest():
+    config = load_config("sources:\n  customers: ecom.nope\n")
+    change_set = ChangeSet(changes=(change(ChangeKind.DROP_COLUMN),), not_analyzed=())
+
+    with pytest.raises(
+        AnalyzerError, match=r"source ecom\.nope .* not in the manifest"
+    ):
+        analyze(change_set, first_hop_manifest(), config)

@@ -4,10 +4,20 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from schemaguard.cli import app, format_change, format_columns, format_model
+from schemaguard.cli import (
+    app,
+    format_change,
+    format_columns,
+    format_impact,
+    format_model,
+    merge_change_sets,
+    migration_files,
+)
+from schemaguard.config import SourceRef
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Downstream
-from schemaguard.migrations import ChangeKind, SchemaChange
+from schemaguard.impact import ChangeImpact
+from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MANIFEST = FIXTURES / "dbt" / "manifest.json"
@@ -198,3 +208,175 @@ def test_lineage_missing_manifest(tmp_path: Path):
     result = lineage("app.customers", "--manifest", str(tmp_path / "nope.json"))
 
     assert result.exit_code == 2
+
+
+def make_project(
+    tmp_path: Path,
+    migrations: dict[str, str],
+    sources: str = "customers: app.customers",
+) -> Path:
+    config = tmp_path / "schemaguard.yml"
+    config.write_text(
+        f"manifest: dbt/manifest.json\nmigrations: versions\nsources:\n  {sources}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "dbt").mkdir()
+    (tmp_path / "dbt" / "manifest.json").write_text(
+        MANIFEST.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    versions = tmp_path / "versions"
+    versions.mkdir()
+    for name, text in migrations.items():
+        (versions / name).write_text(text, encoding="utf-8")
+
+    return config
+
+
+def alembic_fixture(name: str) -> str:
+    return (FIXTURES / "alembic" / name).read_text(encoding="utf-8")
+
+
+def test_check_reports_impact(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 0
+    assert "customers.signup_date" in result.stdout
+    assert "source app.customers" in result.stdout
+    assert "raw_dump" in result.stdout
+    assert "(uncertain)" in result.stdout
+    assert "exposures: dashboard" in result.stdout
+
+
+def test_check_explicit_files(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_table.py")})
+    mixed = str(FIXTURES / "sql" / "mixed.sql")
+
+    result = runner.invoke(app, ["check", mixed, "--config", str(config)])
+
+    assert result.exit_code == 0
+    assert "orders.amount -> total  (unmapped)" in result.stdout
+    assert result.stdout.count("not_analyzed") == 2
+    assert "drop_table" not in result.stdout
+
+
+def test_check_no_changes(tmp_path: Path):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "No changes found."
+
+
+def test_check_missing_config(tmp_path: Path):
+    result = runner.invoke(app, ["check", "--config", str(tmp_path / "nope.yml")])
+
+    assert result.exit_code == 2
+
+
+def test_check_invalid_config(tmp_path: Path):
+    config = make_project(tmp_path, {})
+    config.write_text("sources: {}\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 2
+    assert f"Error: {config}" in result.stderr
+
+
+def test_check_missing_manifest(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+    (tmp_path / "dbt" / "manifest.json").unlink()
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 2
+    assert "manifest" in result.stderr
+    assert "not found" in result.stderr
+
+
+def test_check_missing_migrations_folder(tmp_path: Path):
+    config = make_project(tmp_path, {})
+    (tmp_path / "versions").rmdir()
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 2
+    assert "migrations folder" in result.stderr
+
+
+def test_check_source_not_in_manifest(tmp_path: Path):
+    config = make_project(
+        tmp_path,
+        {"0001.py": alembic_fixture("drop_column.py")},
+        sources="customers: ecom.nope",
+    )
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 2
+    assert "ecom.nope" in result.stderr
+
+
+def test_check_wrong_file_type(tmp_path: Path):
+    config = make_project(tmp_path, {})
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello", encoding="utf-8")
+
+    result = runner.invoke(app, ["check", str(notes), "--config", str(config)])
+
+    assert result.exit_code == 2
+    assert "is not a .py or .sql migration" in result.stderr
+
+
+def test_merge_change_sets_keeps_order():
+    first = SchemaChange(
+        kind=ChangeKind.DROP_TABLE, table="a", source_file="1.sql", line=1
+    )
+    second = SchemaChange(
+        kind=ChangeKind.DROP_TABLE, table="b", source_file="2.sql", line=1
+    )
+    skipped = NotAnalyzed(reason="BEGIN not checked", source_file="2.sql", line=1)
+
+    result = merge_change_sets(
+        [
+            ChangeSet(changes=(first,), not_analyzed=()),
+            ChangeSet(changes=(second,), not_analyzed=(skipped,)),
+        ]
+    )
+
+    assert result == ChangeSet(changes=(first, second), not_analyzed=(skipped,))
+
+
+def test_format_impact_without_models():
+    change = SchemaChange(
+        kind=ChangeKind.ADD_COLUMN,
+        table="customers",
+        source_file="m.py",
+        line=3,
+        column="email",
+    )
+    impact = ChangeImpact(
+        change=change,
+        source=SourceRef(source_name="app", table_name="customers"),
+        models=(),
+        tests=(),
+        exposures=(),
+    )
+
+    assert format_impact(impact) == [
+        format_change(change),
+        "  source app.customers",
+        "  no affected models",
+        "  tests: 0",
+    ]
+
+
+def test_migration_files(tmp_path: Path):
+    for name in ("b.sql", "a.py", "__init__.py", "x.txt"):
+        (tmp_path / name).write_text("", encoding="utf-8")
+    (tmp_path / "sub.py").mkdir()
+
+    assert migration_files(tmp_path) == [tmp_path / "a.py", tmp_path / "b.sql"]

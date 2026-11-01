@@ -1,6 +1,10 @@
+from pathlib import Path
 from typing import Any
 
 from schemaguard.dbt.manifest import Manifest
+from schemaguard.impact import AffectedModel
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def make_manifest(
@@ -32,3 +36,11 @@ def node(unique_id: str, resource_type: str) -> dict[str, Any]:
         "name": unique_id.split(".")[-1],
         "depends_on": {},
     }
+
+
+def summary(models: tuple[AffectedModel, ...]) -> list[tuple[str, int, bool]]:
+    return [(model.unique_id, model.depth, model.uncertain) for model in models]
+
+
+def read_fixture(*parts: str) -> str:
+    return FIXTURES.joinpath(*parts).read_text(encoding="utf-8")
