@@ -4,6 +4,7 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
+from schemaguard.config import ConfigError, load_config
 from schemaguard.dbt.columns import ColumnUsage, column_usage
 from schemaguard.dbt.lineage import (
     Downstream,
@@ -13,8 +14,10 @@ from schemaguard.dbt.lineage import (
     split,
 )
 from schemaguard.dbt.manifest import Manifest
+from schemaguard.impact import AnalyzerError, ChangeImpact, ImpactReport, analyze
 from schemaguard.migrations import (
     ChangeKind,
+    ChangeSet,
     NotAnalyzed,
     SchemaChange,
     parse_alembic,
@@ -34,17 +37,7 @@ def parse(
     file: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
 ) -> None:
     """Print the schema changes found in one migration file"""
-    suffix = file.suffix.lower()
-
-    if suffix not in (".py", ".sql"):
-        typer.echo(f"Error: {file} is not a .py or .sql migration", err=True)
-        raise typer.Exit(code=2)
-
-    text = file.read_text(encoding="utf-8")
-    if suffix == ".py":
-        result = parse_alembic(text, str(file))
-    else:
-        result = parse_sql(text, str(file))
+    result = parse_file(file)
 
     entries = [(c.line, format_change(c)) for c in result.changes]
     entries += [(n.line, format_not_analyzed(n)) for n in result.not_analyzed]
@@ -77,12 +70,7 @@ def lineage(
         )
         raise typer.Exit(code=2)
 
-    try:
-        m = Manifest.model_validate_json(manifest.read_text(encoding="utf-8"))
-    except (ValidationError, UnicodeDecodeError) as e:
-        typer.echo(f"Error: {manifest} is not a valid dbt manifest", err=True)
-        raise typer.Exit(code=2) from e
-
+    m = load_manifest(manifest)
     source_id = find_source(m, source_name, table_name)
 
     if source_id is None:
@@ -122,6 +110,128 @@ def lineage(
             "hint: some models have no compiled SQL; run dbt compile or dbt build",
             err=True,
         )
+
+
+@app.command()
+def check(
+    files: Annotated[
+        list[Path] | None,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Migration files to check (default: the config's migrations folder)",
+        ),
+    ] = None,
+    config: Annotated[
+        Path,
+        typer.Option("--config", "-c", exists=True, dir_okay=False, readable=True),
+    ] = Path("schemaguard.yml"),
+) -> None:
+    """Check migrations against the dbt project"""
+    try:
+        cfg = load_config(config.read_text(encoding="utf-8"))
+    except (ConfigError, UnicodeDecodeError) as e:
+        typer.echo(f"Error: {config}: {e}", err=True)
+        raise typer.Exit(code=2) from e
+
+    base = config.parent
+
+    if not files:
+        folder = base / cfg.migrations
+        if not folder.is_dir():
+            typer.echo(f"Error: migrations folder {folder} not found", err=True)
+            raise typer.Exit(code=2)
+        files = migration_files(folder)
+
+    change_set = merge_change_sets([parse_file(f) for f in files])
+    manifest = load_manifest(base / cfg.manifest)
+
+    try:
+        report = analyze(change_set, manifest, cfg)
+    except AnalyzerError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=2) from e
+
+    for line in format_report(report):
+        typer.echo(line)
+
+
+def parse_file(file: Path) -> ChangeSet:
+    suffix = file.suffix.lower()
+
+    if suffix not in (".py", ".sql"):
+        typer.echo(f"Error: {file} is not a .py or .sql migration", err=True)
+        raise typer.Exit(code=2)
+
+    text = file.read_text(encoding="utf-8")
+    if suffix == ".py":
+        return parse_alembic(text, str(file))
+    return parse_sql(text, str(file))
+
+
+def load_manifest(path: Path) -> Manifest:
+    if not path.is_file():
+        typer.echo(f"Error: manifest {path} not found", err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        return Manifest.model_validate_json(path.read_text(encoding="utf-8"))
+    except (ValidationError, UnicodeDecodeError) as e:
+        typer.echo(f"Error: {path} is not a valid dbt manifest", err=True)
+        raise typer.Exit(code=2) from e
+
+
+def migration_files(folder: Path) -> list[Path]:
+    return sorted(
+        p
+        for p in folder.iterdir()
+        if p.is_file()
+        and p.suffix.lower() in (".py", ".sql")
+        and not p.name.startswith("__")
+    )
+
+
+def merge_change_sets(change_sets: list[ChangeSet]) -> ChangeSet:
+    return ChangeSet(
+        changes=tuple(c for cs in change_sets for c in cs.changes),
+        not_analyzed=tuple(n for cs in change_sets for n in cs.not_analyzed),
+    )
+
+
+def format_impact(impact: ChangeImpact) -> list[str]:
+    lines = [format_change(impact.change), f"  source {impact.source}"]
+
+    if not impact.models:
+        lines.append("  no affected models")
+
+    for model in impact.models:
+        line = f"  hop {model.depth}  {model.name:<20}"
+        if model.uncertain:
+            line = f"{line} (uncertain)"
+        lines.append(line.rstrip())
+
+    lines.append(f"  tests: {len(impact.tests)}")
+
+    if impact.exposures:
+        lines.append(f"  exposures: {', '.join(impact.exposures)}")
+
+    return lines
+
+
+def format_report(report: ImpactReport) -> list[str]:
+    if not (report.impacts or report.unmapped or report.not_analyzed):
+        return ["No changes found."]
+
+    lines: list[str] = []
+
+    for impact in report.impacts:
+        lines += format_impact(impact)
+
+    lines += [f"{format_change(c)}  (unmapped)" for c in report.unmapped]
+    lines += [format_not_analyzed(n) for n in report.not_analyzed]
+
+    return lines
 
 
 def format_change(change: SchemaChange) -> str:
