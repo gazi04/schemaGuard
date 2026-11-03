@@ -199,8 +199,23 @@ def merge_change_sets(change_sets: list[ChangeSet]) -> ChangeSet:
     )
 
 
+def format_severity(impact: ChangeImpact) -> str:
+    marks: list[str] = []
+    if impact.uncertain:
+        marks.append("uncertain")
+    if impact.possible_rename:
+        marks.append("possible rename")
+
+    line = f"  severity: {impact.severity}"
+    return f"{line} ({', '.join(marks)})" if marks else line
+
+
 def format_impact(impact: ChangeImpact) -> list[str]:
-    lines = [format_change(impact.change), f"  source {impact.source}"]
+    lines = [
+        format_change(impact.change),
+        f"  source {impact.source}",
+        format_severity(impact),
+    ]
 
     if not impact.models:
         lines.append("  no affected models")

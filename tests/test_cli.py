@@ -10,13 +10,14 @@ from schemaguard.cli import (
     format_columns,
     format_impact,
     format_model,
+    format_severity,
     merge_change_sets,
     migration_files,
 )
 from schemaguard.config import SourceRef
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Downstream
-from schemaguard.impact import ChangeImpact
+from schemaguard.impact import AffectedModel, ChangeImpact
 from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -369,6 +370,7 @@ def test_format_impact_without_models():
     assert format_impact(impact) == [
         format_change(change),
         "  source app.customers",
+        "  severity: safe",
         "  no affected models",
         "  tests: 0",
     ]
@@ -380,3 +382,37 @@ def test_migration_files(tmp_path: Path):
     (tmp_path / "sub.py").mkdir()
 
     assert migration_files(tmp_path) == [tmp_path / "a.py", tmp_path / "b.sql"]
+
+
+def test_format_severity_marks():
+    change = SchemaChange(
+        kind=ChangeKind.DROP_COLUMN,
+        table="customers",
+        source_file="m.py",
+        line=3,
+        column="email",
+    )
+    model = AffectedModel(
+        unique_id="model.demo.raw_dump", name="raw_dump", depth=1, uncertain=True
+    )
+    impact = ChangeImpact(
+        change=change,
+        source=SourceRef(source_name="app", table_name="customers"),
+        models=(model,),
+        tests=(),
+        exposures=(),
+        possible_rename=True,
+    )
+
+    assert format_severity(impact) == (
+        "  severity: breaking (uncertain, possible rename)"
+    )
+
+
+def test_check_shows_severity(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 0
+    assert "severity: breaking (uncertain)" in result.stdout
