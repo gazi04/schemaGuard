@@ -6,6 +6,7 @@ from schemaguard.config import SourceRef, load_config
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Lineage, downstream, split
 from schemaguard.dbt.manifest import Manifest
+from schemaguard.impact import ChangeImpact, Severity
 from schemaguard.impact.analyzer import (
     AnalyzerError,
     Match,
@@ -147,6 +148,17 @@ def attached_manifest() -> Manifest:
             "test.a_id": source_test("test.a_id", "id"),
         },
         exposures={"exposure.e": {"unique_id": "exposure.e", "name": "e"}},
+    )
+
+
+def source_test_manifest() -> Manifest:
+    # No model reads email; only a source test does.
+    return make_manifest(
+        child_map={SOURCE: ["model.ids", "test.src_email"]},
+        nodes={
+            "model.ids": compiled("model.ids", "select id from raw_customers"),
+            "test.src_email": source_test("test.src_email", "Email"),
+        },
     )
 
 
@@ -389,3 +401,41 @@ def test_analyze_source_missing_from_manifest():
         AnalyzerError, match=r"source ecom\.nope .* not in the manifest"
     ):
         analyze(change_set, first_hop_manifest(), config)
+
+
+def only_impact(schema_change: SchemaChange, manifest: Manifest) -> ChangeImpact:
+    change_set = ChangeSet(changes=(schema_change,), not_analyzed=())
+    report = analyze(change_set, manifest, CONFIG)
+
+    assert len(report.impacts) == 1
+    return report.impacts[0]
+
+
+def test_analyze_source_test_only_drop():
+    impact = only_impact(change(ChangeKind.DROP_COLUMN), source_test_manifest())
+
+    assert impact.models == ()
+    assert impact.tests == ("test.src_email",)
+    assert impact.uncertain is False
+    assert impact.severity is Severity.BREAKING
+
+
+def test_analyze_source_test_only_nullable():
+    nullable = change(ChangeKind.ALTER_NULLABILITY).model_copy(
+        update={"nullable": True}
+    )
+
+    impact = only_impact(nullable, source_test_manifest())
+
+    assert impact.tests == ("test.src_email",)
+    assert impact.severity is Severity.RISKY
+
+
+def test_analyze_unused_column_without_test():
+    impact = only_impact(
+        change(ChangeKind.DROP_COLUMN, "phone"), source_test_manifest()
+    )
+
+    assert impact.models == ()
+    assert impact.tests == ()
+    assert impact.severity is Severity.SAFE

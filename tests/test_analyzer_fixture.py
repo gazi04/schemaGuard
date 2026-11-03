@@ -2,7 +2,7 @@ import pytest
 
 from schemaguard.config import SourceRef, load_config
 from schemaguard.dbt.manifest import Manifest
-from schemaguard.impact import AnalyzerError, ChangeImpact, analyze
+from schemaguard.impact import AnalyzerError, ChangeImpact, Severity, analyze
 from schemaguard.migrations import (
     ChangeKind,
     ChangeSet,
@@ -161,3 +161,23 @@ def test_demo_config_does_not_match_fixture_manifest():
 
     with pytest.raises(AnalyzerError, match=r"ecom\.raw_customers"):
         analyze(change_set, MANIFEST, config)
+
+
+def test_severity_and_possible_rename():
+    drop = change(ChangeKind.DROP_COLUMN, "name")
+    add = change(ChangeKind.ADD_COLUMN, "full_name")
+    report = analyze(ChangeSet(changes=(drop, add), not_analyzed=()), MANIFEST, CONFIG)
+
+    dropped, added = report.impacts
+    assert dropped.severity is Severity.BREAKING
+    assert dropped.possible_rename is True
+    assert added.severity is Severity.SAFE
+    assert added.possible_rename is False
+    assert report.worst is Severity.BREAKING
+
+
+def test_uncertain_drop_stays_breaking():
+    impact = impact_of(change(ChangeKind.DROP_COLUMN, "not_used_anywhere"))
+
+    assert impact.uncertain is True
+    assert impact.severity is Severity.BREAKING
