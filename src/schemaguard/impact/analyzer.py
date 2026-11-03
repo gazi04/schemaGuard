@@ -13,9 +13,14 @@ from schemaguard.dbt.lineage import (
     split,
 )
 from schemaguard.dbt.manifest import Manifest
+from schemaguard.impact.severity import (
+    TABLE_LEVEL,
+    Severity,
+    classify,
+    is_possible_rename,
+    rename_candidates,
+)
 from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
-
-TABLE_LEVEL = frozenset({ChangeKind.DROP_TABLE, ChangeKind.RENAME_TABLE})
 
 
 class Match(StrEnum):
@@ -39,11 +44,17 @@ class ChangeImpact(BaseModel):
     models: tuple[AffectedModel, ...]
     tests: tuple[str, ...]
     exposures: tuple[str, ...]
+    possible_rename: bool = False
 
     @computed_field
     @property
     def uncertain(self) -> bool:
         return any(m.uncertain for m in self.models)
+
+    @computed_field
+    @property
+    def severity(self) -> Severity:
+        return classify(self.change, bool(self.models or self.tests))
 
 
 class ImpactReport(BaseModel):
@@ -51,6 +62,15 @@ class ImpactReport(BaseModel):
     impacts: tuple[ChangeImpact, ...]
     unmapped: tuple[SchemaChange, ...]
     not_analyzed: tuple[NotAnalyzed, ...]
+
+    @computed_field
+    @property
+    def worst(self) -> Severity:
+        return max(
+            (i.severity for i in self.impacts),
+            key=lambda s: s.rank,
+            default=Severity.SAFE,
+        )
 
 
 class AnalyzerError(Exception):
@@ -184,6 +204,7 @@ def collect_tests_exposures(
 def analyze(change_set: ChangeSet, manifest: Manifest, config: Config) -> ImpactReport:
     impacts: list[ChangeImpact] = []
     unmapped: list[SchemaChange] = []
+    candidates = rename_candidates(change_set.changes)
 
     for change in change_set.changes:
         if is_ignored(config, change.table):
@@ -214,6 +235,7 @@ def analyze(change_set: ChangeSet, manifest: Manifest, config: Config) -> Impact
                 models=models,
                 tests=tests,
                 exposures=exposures,
+                possible_rename=is_possible_rename(change, candidates),
             )
         )
 
