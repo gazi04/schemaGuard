@@ -1,0 +1,10 @@
+# Scenario suite (roadmap 3.4): every file in migrations/ has an expected
+# result in tests/test_scenarios.py.
+manifest: dbt/manifest.json
+migrations: migrations
+sources:
+  customers: app.customers  # explicit columns: id, name, email; source tests on id, phone
+  orders: app.orders        # read with select * (every column uncertain)
+  payments: app.payments    # no models read it
+ignore:
+  - alembic_version

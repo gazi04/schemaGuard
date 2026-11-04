@@ -1,0 +1,94 @@
+{
+  "sources": {
+    "source.shop.app.customers": {
+      "unique_id": "source.shop.app.customers",
+      "source_name": "app",
+      "name": "customers",
+      "identifier": "customers"
+    },
+    "source.shop.app.orders": {
+      "unique_id": "source.shop.app.orders",
+      "source_name": "app",
+      "name": "orders",
+      "identifier": "orders"
+    },
+    "source.shop.app.payments": {
+      "unique_id": "source.shop.app.payments",
+      "source_name": "app",
+      "name": "payments",
+      "identifier": "payments"
+    }
+  },
+  "nodes": {
+    "model.shop.stg_customers": {
+      "unique_id": "model.shop.stg_customers",
+      "resource_type": "model",
+      "name": "stg_customers",
+      "depends_on": { "nodes": ["source.shop.app.customers"] },
+      "compiled_code": "select id as customer_id, name as customer_name, email from app.customers"
+    },
+    "model.shop.stg_orders": {
+      "unique_id": "model.shop.stg_orders",
+      "resource_type": "model",
+      "name": "stg_orders",
+      "depends_on": { "nodes": ["source.shop.app.orders"] },
+      "compiled_code": "select * from app.orders"
+    },
+    "model.shop.customer_orders": {
+      "unique_id": "model.shop.customer_orders",
+      "resource_type": "model",
+      "name": "customer_orders",
+      "depends_on": {
+        "nodes": ["model.shop.stg_customers", "model.shop.stg_orders"]
+      },
+      "compiled_code": "select c.customer_id, count(o.id) as order_count from stg_customers as c left join stg_orders as o on o.customer_id = c.customer_id group by 1"
+    },
+    "test.shop.source_not_null_app_customers_id": {
+      "unique_id": "test.shop.source_not_null_app_customers_id",
+      "resource_type": "test",
+      "name": "source_not_null_app_customers_id",
+      "depends_on": { "nodes": ["source.shop.app.customers"] },
+      "column_name": "id"
+    },
+    "test.shop.source_not_null_app_customers_phone": {
+      "unique_id": "test.shop.source_not_null_app_customers_phone",
+      "resource_type": "test",
+      "name": "source_not_null_app_customers_phone",
+      "depends_on": { "nodes": ["source.shop.app.customers"] },
+      "column_name": "phone"
+    },
+    "test.shop.unique_stg_customers_customer_id": {
+      "unique_id": "test.shop.unique_stg_customers_customer_id",
+      "resource_type": "test",
+      "name": "unique_stg_customers_customer_id",
+      "depends_on": { "nodes": ["model.shop.stg_customers"] },
+      "column_name": "customer_id",
+      "attached_node": "model.shop.stg_customers"
+    }
+  },
+  "child_map": {
+    "source.shop.app.customers": [
+      "model.shop.stg_customers",
+      "test.shop.source_not_null_app_customers_id",
+      "test.shop.source_not_null_app_customers_phone"
+    ],
+    "source.shop.app.orders": ["model.shop.stg_orders"],
+    "source.shop.app.payments": [],
+    "model.shop.stg_customers": [
+      "model.shop.customer_orders",
+      "test.shop.unique_stg_customers_customer_id"
+    ],
+    "model.shop.stg_orders": ["model.shop.customer_orders"],
+    "model.shop.customer_orders": ["exposure.shop.weekly_kpis"],
+    "test.shop.source_not_null_app_customers_id": [],
+    "test.shop.source_not_null_app_customers_phone": [],
+    "test.shop.unique_stg_customers_customer_id": [],
+    "exposure.shop.weekly_kpis": []
+  },
+  "exposures": {
+    "exposure.shop.weekly_kpis": {
+      "unique_id": "exposure.shop.weekly_kpis",
+      "name": "weekly_kpis"
+    }
+  }
+}
