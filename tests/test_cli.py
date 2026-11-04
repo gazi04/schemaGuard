@@ -6,18 +6,13 @@ from typer.testing import CliRunner
 
 from schemaguard.cli import (
     app,
-    format_change,
     format_columns,
-    format_impact,
     format_model,
-    format_severity,
     merge_change_sets,
     migration_files,
 )
-from schemaguard.config import SourceRef
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Downstream
-from schemaguard.impact import AffectedModel, ChangeImpact
 from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -73,19 +68,6 @@ def test_parse_missing_file():
     result = runner.invoke(app, ["parse", "doesnt_exist.sql"])
 
     assert result.exit_code == 2
-
-
-def test_format_alter_type_without_old_type():
-    change = SchemaChange(
-        kind=ChangeKind.ALTER_TYPE,
-        table="orders",
-        column="amount",
-        new_type="BIGINT",
-        source_file="m.sql",
-        line=3,
-    )
-
-    assert format_change(change).endswith("orders.amount ? -> BIGINT")
 
 
 def test_parse_directory():
@@ -268,7 +250,9 @@ def test_check_no_changes(tmp_path: Path):
     result = runner.invoke(app, ["check", "--config", str(config)])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "No changes found."
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("worst: safe")
+    assert lines[-1] == "No changes found."
 
 
 def test_check_missing_config(tmp_path: Path):
@@ -351,62 +335,12 @@ def test_merge_change_sets_keeps_order():
     assert result == ChangeSet(changes=(first, second), not_analyzed=(skipped,))
 
 
-def test_format_impact_without_models():
-    change = SchemaChange(
-        kind=ChangeKind.ADD_COLUMN,
-        table="customers",
-        source_file="m.py",
-        line=3,
-        column="email",
-    )
-    impact = ChangeImpact(
-        change=change,
-        source=SourceRef(source_name="app", table_name="customers"),
-        models=(),
-        tests=(),
-        exposures=(),
-    )
-
-    assert format_impact(impact) == [
-        format_change(change),
-        "  source app.customers",
-        "  severity: safe",
-        "  no affected models",
-        "  tests: 0",
-    ]
-
-
 def test_migration_files(tmp_path: Path):
     for name in ("b.sql", "a.py", "__init__.py", "x.txt"):
         (tmp_path / name).write_text("", encoding="utf-8")
     (tmp_path / "sub.py").mkdir()
 
     assert migration_files(tmp_path) == [tmp_path / "a.py", tmp_path / "b.sql"]
-
-
-def test_format_severity_marks():
-    change = SchemaChange(
-        kind=ChangeKind.DROP_COLUMN,
-        table="customers",
-        source_file="m.py",
-        line=3,
-        column="email",
-    )
-    model = AffectedModel(
-        unique_id="model.demo.raw_dump", name="raw_dump", depth=1, uncertain=True
-    )
-    impact = ChangeImpact(
-        change=change,
-        source=SourceRef(source_name="app", table_name="customers"),
-        models=(model,),
-        tests=(),
-        exposures=(),
-        possible_rename=True,
-    )
-
-    assert format_severity(impact) == (
-        "  severity: breaking (uncertain, possible rename)"
-    )
 
 
 def test_check_shows_severity(tmp_path: Path):

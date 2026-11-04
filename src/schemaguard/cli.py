@@ -14,15 +14,13 @@ from schemaguard.dbt.lineage import (
     split,
 )
 from schemaguard.dbt.manifest import Manifest
-from schemaguard.impact import AnalyzerError, ChangeImpact, ImpactReport, analyze
+from schemaguard.impact import AnalyzerError, analyze
 from schemaguard.migrations import (
-    ChangeKind,
     ChangeSet,
-    NotAnalyzed,
-    SchemaChange,
     parse_alembic,
     parse_sql,
 )
+from schemaguard.report import format_change, format_not_analyzed, format_report
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -197,83 +195,6 @@ def merge_change_sets(change_sets: list[ChangeSet]) -> ChangeSet:
         changes=tuple(c for cs in change_sets for c in cs.changes),
         not_analyzed=tuple(n for cs in change_sets for n in cs.not_analyzed),
     )
-
-
-def format_severity(impact: ChangeImpact) -> str:
-    marks: list[str] = []
-    if impact.uncertain:
-        marks.append("uncertain")
-    if impact.possible_rename:
-        marks.append("possible rename")
-
-    line = f"  severity: {impact.severity}"
-    return f"{line} ({', '.join(marks)})" if marks else line
-
-
-def format_impact(impact: ChangeImpact) -> list[str]:
-    lines = [
-        format_change(impact.change),
-        f"  source {impact.source}",
-        format_severity(impact),
-    ]
-
-    if not impact.models:
-        lines.append("  no affected models")
-
-    for model in impact.models:
-        line = f"  hop {model.depth}  {model.name:<20}"
-        if model.uncertain:
-            line = f"{line} (uncertain)"
-        lines.append(line.rstrip())
-
-    lines.append(f"  tests: {len(impact.tests)}")
-
-    if impact.exposures:
-        lines.append(f"  exposures: {', '.join(impact.exposures)}")
-
-    return lines
-
-
-def format_report(report: ImpactReport) -> list[str]:
-    if not (report.impacts or report.unmapped or report.not_analyzed):
-        return ["No changes found."]
-
-    lines: list[str] = []
-
-    for impact in report.impacts:
-        lines += format_impact(impact)
-
-    lines += [f"{format_change(c)}  (unmapped)" for c in report.unmapped]
-    lines += [format_not_analyzed(n) for n in report.not_analyzed]
-
-    return lines
-
-
-def format_change(change: SchemaChange) -> str:
-    target = change.table
-
-    if change.column is not None:
-        target = f"{change.table}.{change.column}"
-
-    match change.kind:
-        case ChangeKind.RENAME_COLUMN | ChangeKind.RENAME_TABLE:
-            detail = f"-> {change.new_name}"
-        case ChangeKind.ALTER_TYPE:
-            detail = f"{change.old_type or '?'} -> {change.new_type}"
-        case ChangeKind.ALTER_NULLABILITY:
-            detail = "-> nullable" if change.nullable else "-> not null"
-        case ChangeKind.ADD_COLUMN:
-            detail = change.new_type or ""
-        case ChangeKind.DROP_COLUMN | ChangeKind.DROP_TABLE:
-            detail = ""
-
-    location = f"{change.source_file}:{change.line}"
-    return f"{location} {change.kind:<17} {target} {detail}".rstrip()
-
-
-def format_not_analyzed(entry: NotAnalyzed) -> str:
-    location = f"{entry.source_file}:{entry.line}"
-    return f"{location} {'not_analyzed':<17} {entry.reason}"
 
 
 def format_columns(usage: ColumnUsage) -> str:
