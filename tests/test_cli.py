@@ -350,3 +350,67 @@ def test_check_shows_severity(tmp_path: Path):
 
     assert result.exit_code == 0
     assert "severity: breaking (uncertain)" in result.stdout
+
+
+def test_check_json_output(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--format", "json"])
+
+    assert result.exit_code == 0
+    doc = json.loads(result.stdout)
+    assert doc["version"] == 1
+    assert doc["worst"] == "breaking"
+    [impact] = doc["impacts"]
+    assert impact["change"]["column"] == "signup_date"
+    assert impact["source"] == {"source_name": "app", "table_name": "customers"}
+
+
+def test_check_json_short_flag(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "-f", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["version"] == 1
+
+
+def test_check_json_no_changes(tmp_path: Path):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--format", "json"])
+
+    assert result.exit_code == 0
+    doc = json.loads(result.stdout)
+    assert doc["impacts"] == []
+    assert doc["worst"] == "safe"
+
+
+def test_check_format_text_is_default(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    default = runner.invoke(app, ["check", "--config", str(config)])
+    text = runner.invoke(app, ["check", "--config", str(config), "--format", "text"])
+
+    assert text.exit_code == 0
+    assert text.stdout == default.stdout
+
+
+def test_check_unknown_format(tmp_path: Path):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--format", "xml"])
+
+    assert result.exit_code == 2
+    assert "xml" in result.stderr
+
+
+def test_check_json_errors_go_to_stderr(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+    (tmp_path / "dbt" / "manifest.json").unlink()
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--format", "json"])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "not found" in result.stderr

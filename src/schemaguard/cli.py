@@ -1,3 +1,4 @@
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -20,7 +21,18 @@ from schemaguard.migrations import (
     parse_alembic,
     parse_sql,
 )
-from schemaguard.report import format_change, format_not_analyzed, format_report
+from schemaguard.report import (
+    format_change,
+    format_json,
+    format_not_analyzed,
+    format_report,
+)
+
+
+class OutputFormat(StrEnum):
+    TEXT = "text"
+    JSON = "json"
+
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -125,6 +137,9 @@ def check(
         Path,
         typer.Option("--config", "-c", exists=True, dir_okay=False, readable=True),
     ] = Path("schemaguard.yml"),
+    output_format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="...")
+    ] = OutputFormat.TEXT,
 ) -> None:
     """Check migrations against the dbt project"""
     try:
@@ -151,8 +166,11 @@ def check(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=2) from e
 
-    for line in format_report(report):
-        typer.echo(line)
+    if output_format is OutputFormat.JSON:
+        typer.echo(format_json(report))
+    else:
+        for line in format_report(report):
+            typer.echo(line)
 
 
 def parse_file(file: Path) -> ChangeSet:
