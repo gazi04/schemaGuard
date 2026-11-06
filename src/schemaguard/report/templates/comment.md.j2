@@ -1,0 +1,37 @@
+{{ marker }}
+## SchemaGuard
+
+**{{ summary }}**
+
+{% if not (impacts or unmapped or not_analyzed) %}
+No changes found.
+{% endif %}
+{% if impacts %}
+| Severity | Change | Location | Source | Affected models | Tests | Exposures |
+| --- | --- | --- | --- | --- | --- | --- |
+{% for impact in impacts %}
+| {{ severity_cell(impact) | md }} | {{ describe(impact.change) | md }} | {{ impact.change.source_file | md }}:{{ impact.change.line }} | {{ impact.source | md }} | {{ models_cell(impact) | md }} | {{ impact.tests | length }} | {{ (impact.exposures | join(", ") or "-") | md }} |
+{% endfor %}
+{% endif %}
+{% if unmapped %}
+
+<details>
+<summary>{{ unmapped | length }} unmapped (table not in <code>sources</code>)</summary>
+
+{% for change in unmapped %}
+- {{ describe(change) | md }} ({{ change.source_file | md }}:{{ change.line }})
+{% endfor %}
+
+</details>
+{% endif %}
+{% if not_analyzed %}
+
+<details>
+<summary>{{ not_analyzed | length }} not analyzed</summary>
+
+{% for entry in not_analyzed %}
+- {{ entry.reason | md }} ({{ entry.source_file | md }}:{{ entry.line }})
+{% endfor %}
+
+</details>
+{% endif %}
