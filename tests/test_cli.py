@@ -14,6 +14,7 @@ from schemaguard.cli import (
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Downstream
 from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
+from schemaguard.report import MARKER
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MANIFEST = FIXTURES / "dbt" / "manifest.json"
@@ -410,6 +411,41 @@ def test_check_json_errors_go_to_stderr(tmp_path: Path):
     (tmp_path / "dbt" / "manifest.json").unlink()
 
     result = runner.invoke(app, ["check", "--config", str(config), "--format", "json"])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "not found" in result.stderr
+
+
+def test_check_markdown_output(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(
+        app, ["check", "--config", str(config), "--format", "markdown"]
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.splitlines()[0] == MARKER
+    assert "drop_column customers.signup_date" in result.stdout
+    assert "raw_dump (hop 1)?" in result.stdout
+
+
+def test_check_markdown_no_changes(tmp_path: Path):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "-f", "markdown"])
+
+    assert result.exit_code == 0
+    assert "No changes found." in result.stdout
+
+
+def test_check_markdown_errors_go_to_stderr(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+    (tmp_path / "dbt" / "manifest.json").unlink()
+
+    result = runner.invoke(
+        app, ["check", "--config", str(config), "--format", "markdown"]
+    )
 
     assert result.exit_code == 2
     assert result.stdout == ""

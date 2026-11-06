@@ -24,6 +24,7 @@ from schemaguard.migrations import (
 from schemaguard.report import (
     format_change,
     format_json,
+    format_markdown,
     format_not_analyzed,
     format_report,
 )
@@ -32,6 +33,7 @@ from schemaguard.report import (
 class OutputFormat(StrEnum):
     TEXT = "text"
     JSON = "json"
+    MARKDOWN = "markdown"
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -168,6 +170,8 @@ def check(
 
     if output_format is OutputFormat.JSON:
         typer.echo(format_json(report))
+    elif output_format is OutputFormat.MARKDOWN:
+        typer.echo(format_markdown(report))
     else:
         for line in format_report(report):
             typer.echo(line)
