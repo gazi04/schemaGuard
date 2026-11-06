@@ -66,25 +66,32 @@ def format_severity(impact: ChangeImpact) -> str:
 
 
 def format_change(change: SchemaChange) -> str:
-    target = change.table
-
-    if change.column is not None:
-        target = f"{change.table}.{change.column}"
-
-    match change.kind:
-        case ChangeKind.RENAME_COLUMN | ChangeKind.RENAME_TABLE:
-            detail = f"-> {change.new_name}"
-        case ChangeKind.ALTER_TYPE:
-            detail = f"{change.old_type or '?'} -> {change.new_type}"
-        case ChangeKind.ALTER_NULLABILITY:
-            detail = "-> nullable" if change.nullable else "-> not null"
-        case ChangeKind.ADD_COLUMN:
-            detail = change.new_type or ""
-        case ChangeKind.DROP_COLUMN | ChangeKind.DROP_TABLE:
-            detail = ""
-
+    target = change_target(change)
+    detail = change_detail(change)
     location = f"{change.source_file}:{change.line}"
     return f"{location} {change.kind:<17} {target} {detail}".rstrip()
+
+
+def change_target(change: SchemaChange) -> str:
+    """`table` or `table.column`."""
+    if change.column is None:
+        return change.table
+    return f"{change.table}.{change.column}"
+
+
+def change_detail(change: SchemaChange) -> str:
+    """What the change does, e.g. `-> new_name` or `INT -> BIGINT`; may be empty."""
+    match change.kind:
+        case ChangeKind.RENAME_COLUMN | ChangeKind.RENAME_TABLE:
+            return f"-> {change.new_name}"
+        case ChangeKind.ALTER_TYPE:
+            return f"{change.old_type or '?'} -> {change.new_type}"
+        case ChangeKind.ALTER_NULLABILITY:
+            return "-> nullable" if change.nullable else "-> not null"
+        case ChangeKind.ADD_COLUMN:
+            return change.new_type or ""
+        case ChangeKind.DROP_COLUMN | ChangeKind.DROP_TABLE:
+            return ""
 
 
 def format_not_analyzed(entry: NotAnalyzed) -> str:

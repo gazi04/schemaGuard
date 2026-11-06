@@ -1,9 +1,13 @@
+from typing import Any
+
 import pytest
 
 from schemaguard.config import SourceRef
 from schemaguard.impact import AffectedModel, ChangeImpact, ImpactReport
 from schemaguard.migrations import ChangeKind, NotAnalyzed, SchemaChange
 from schemaguard.report import (
+    change_detail,
+    change_target,
     format_change,
     format_impact,
     format_report,
@@ -125,3 +129,41 @@ def test_report_starts_with_summary(report: ImpactReport):
 
 def test_empty_report_still_says_no_changes():
     assert format_report(EMPTY) == [format_summary(EMPTY), "", "No changes found."]
+
+
+def test_change_target():
+    table = SchemaChange(
+        kind=ChangeKind.DROP_TABLE, table="orders", source_file="m.py", line=1
+    )
+    column = SchemaChange(
+        kind=ChangeKind.DROP_COLUMN,
+        table="orders",
+        column="amount",
+        source_file="m.py",
+        line=1,
+    )
+
+    assert change_target(table) == "orders"
+    assert change_target(column) == "orders.amount"
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"kind": ChangeKind.DROP_COLUMN, "column": "c"}, ""),
+        ({"kind": ChangeKind.RENAME_TABLE, "new_name": "purchases"}, "-> purchases"),
+        (
+            {"kind": ChangeKind.ALTER_TYPE, "column": "c", "new_type": "TEXT"},
+            "? -> TEXT",
+        ),
+        (
+            {"kind": ChangeKind.ALTER_NULLABILITY, "column": "c", "nullable": False},
+            "-> not null",
+        ),
+        ({"kind": ChangeKind.ADD_COLUMN, "column": "c"}, ""),
+    ],
+)
+def test_change_detail(fields: dict[str, Any], expected: str):
+    change = SchemaChange(table="orders", source_file="m.py", line=1, **fields)
+
+    assert change_detail(change) == expected

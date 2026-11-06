@@ -1,5 +1,7 @@
 from schemaguard.report.json_report import format_json
 from schemaguard.report.terminal import (
+    change_detail,
+    change_target,
     format_change,
     format_impact,
     format_not_analyzed,
@@ -9,6 +11,8 @@ from schemaguard.report.terminal import (
 )
 
 __all__ = [
+    "change_detail",
+    "change_target",
     "format_change",
     "format_impact",
     "format_json",
