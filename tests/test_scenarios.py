@@ -102,7 +102,9 @@ def test_scenario_check_output(name: str, expected: Expected):
         app, ["check", str(MIGRATIONS / name), "--config", str(CONFIG)]
     )
 
-    assert result.exit_code == 0, result.output
+    # Default fail_on is breaking.
+    want = 1 if expected.worst is Severity.BREAKING else 0
+    assert result.exit_code == want, result.output
     assert severity_lines(result.stdout) == expected.severities
     assert result.stdout.count("  (unmapped)") == expected.unmapped
     assert result.stdout.count(" not_analyzed ") == expected.not_analyzed
@@ -125,7 +127,7 @@ def test_scenario_worst(name: str, expected: Expected):
 def test_check_whole_scenario_folder():
     result = runner.invoke(app, ["check", "--config", str(CONFIG)])
 
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     expected = [s for e in SCENARIOS.values() for s in e.severities]
     assert sorted(severity_lines(result.stdout)) == sorted(expected)
 
@@ -142,6 +144,17 @@ def test_whole_folder_worst_is_breaking():
     )
 
     assert report.worst is Severity.BREAKING
+
+
+@pytest.mark.parametrize(
+    ("fail_on", "code"), [("breaking", 1), ("risky", 1), ("never", 0)]
+)
+def test_whole_folder_fail_on(fail_on: str, code: int):
+    result = runner.invoke(
+        app, ["check", "--config", str(CONFIG), "--fail-on", fail_on]
+    )
+
+    assert result.exit_code == code, result.output
 
 
 def test_source_missing_from_manifest_exits_2(tmp_path: Path):

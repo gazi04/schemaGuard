@@ -198,10 +198,12 @@ def make_project(
     tmp_path: Path,
     migrations: dict[str, str],
     sources: str = "customers: app.customers",
+    extra: str = "",
 ) -> Path:
     config = tmp_path / "schemaguard.yml"
     config.write_text(
-        f"manifest: dbt/manifest.json\nmigrations: versions\nsources:\n  {sources}\n",
+        f"manifest: dbt/manifest.json\nmigrations: versions\nsources:\n  {sources}\n"
+        + extra,
         encoding="utf-8",
     )
     (tmp_path / "dbt").mkdir()
@@ -225,7 +227,7 @@ def test_check_reports_impact(tmp_path: Path):
 
     result = runner.invoke(app, ["check", "--config", str(config)])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "customers.signup_date" in result.stdout
     assert "source app.customers" in result.stdout
     assert "raw_dump" in result.stdout
@@ -239,7 +241,7 @@ def test_check_explicit_files(tmp_path: Path):
 
     result = runner.invoke(app, ["check", mixed, "--config", str(config)])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "orders.amount -> total  (unmapped)" in result.stdout
     assert result.stdout.count("not_analyzed") == 2
     assert "drop_table" not in result.stdout
@@ -349,7 +351,7 @@ def test_check_shows_severity(tmp_path: Path):
 
     result = runner.invoke(app, ["check", "--config", str(config)])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "severity: breaking (uncertain)" in result.stdout
 
 
@@ -358,7 +360,7 @@ def test_check_json_output(tmp_path: Path):
 
     result = runner.invoke(app, ["check", "--config", str(config), "--format", "json"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     doc = json.loads(result.stdout)
     assert doc["version"] == 1
     assert doc["worst"] == "breaking"
@@ -372,7 +374,7 @@ def test_check_json_short_flag(tmp_path: Path):
 
     result = runner.invoke(app, ["check", "--config", str(config), "-f", "json"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert json.loads(result.stdout)["version"] == 1
 
 
@@ -393,7 +395,7 @@ def test_check_format_text_is_default(tmp_path: Path):
     default = runner.invoke(app, ["check", "--config", str(config)])
     text = runner.invoke(app, ["check", "--config", str(config), "--format", "text"])
 
-    assert text.exit_code == 0
+    assert text.exit_code == 1
     assert text.stdout == default.stdout
 
 
@@ -424,7 +426,7 @@ def test_check_markdown_output(tmp_path: Path):
         app, ["check", "--config", str(config), "--format", "markdown"]
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert result.stdout.splitlines()[0] == MARKER
     assert "drop_column customers.signup_date" in result.stdout
     assert "raw_dump (hop 1)?" in result.stdout
@@ -450,3 +452,66 @@ def test_check_markdown_errors_go_to_stderr(tmp_path: Path):
     assert result.exit_code == 2
     assert result.stdout == ""
     assert "not found" in result.stderr
+
+
+NULLABLE = """
+def upgrade():
+    op.alter_column("customers", "signup_date", nullable=True)
+"""
+
+
+@pytest.mark.parametrize(
+    ("fail_on", "code"), [("breaking", 0), ("risky", 1), ("never", 0)]
+)
+def test_check_fail_on_from_config(tmp_path: Path, fail_on: str, code: int):
+    config = make_project(
+        tmp_path, {"0001.py": NULLABLE}, extra=f"fail_on: {fail_on}\n"
+    )
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert "severity: risky" in result.stdout
+    assert result.exit_code == code, result.output
+
+
+@pytest.mark.parametrize(
+    ("fail_on", "code"), [("breaking", 1), ("risky", 1), ("never", 0)]
+)
+def test_check_fail_on_flag_overrides_config(tmp_path: Path, fail_on: str, code: int):
+    config = make_project(
+        tmp_path,
+        {"0001.py": alembic_fixture("drop_column.py")},
+        extra="fail_on: never\n",
+    )
+
+    result = runner.invoke(
+        app, ["check", "--config", str(config), "--fail-on", fail_on]
+    )
+
+    assert result.exit_code == code, result.output
+
+
+def test_check_no_changes_never_fails(tmp_path: Path):
+    config = make_project(tmp_path, {}, extra="fail_on: risky\n")
+
+    result = runner.invoke(app, ["check", "--config", str(config)])
+
+    assert result.exit_code == 0
+
+
+def test_check_unknown_fail_on(tmp_path: Path):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--fail-on", "x"])
+
+    assert result.exit_code == 2
+
+
+def test_check_failing_json_keeps_stdout_clean(tmp_path: Path):
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "-f", "json"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["worst"] == "breaking"
+    assert result.stderr == ""

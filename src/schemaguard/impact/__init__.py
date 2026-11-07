@@ -5,7 +5,7 @@ from schemaguard.impact.analyzer import (
     ImpactReport,
     analyze,
 )
-from schemaguard.impact.severity import Severity
+from schemaguard.impact.severity import Severity, should_fail
 
 __all__ = [
     "AffectedModel",
@@ -14,4 +14,5 @@ __all__ = [
     "ImpactReport",
     "Severity",
     "analyze",
+    "should_fail",
 ]

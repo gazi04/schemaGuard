@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from enum import StrEnum
 
+from schemaguard.config import FailOn
 from schemaguard.migrations import ChangeKind, SchemaChange
 
 TABLE_LEVEL = frozenset({ChangeKind.DROP_TABLE, ChangeKind.RENAME_TABLE})
@@ -23,6 +24,20 @@ _RANK: dict[Severity, int] = {
     Severity.RISKY: 1,
     Severity.BREAKING: 2,
 }
+
+
+# The lowest severity that fails the run; `never` has none.
+_THRESHOLD: dict[FailOn, Severity | None] = {
+    FailOn.BREAKING: Severity.BREAKING,
+    FailOn.RISKY: Severity.RISKY,
+    FailOn.NEVER: None,
+}
+
+
+def should_fail(worst: Severity, fail_on: FailOn) -> bool:
+    """True when `worst` reaches the `fail_on` threshold."""
+    threshold = _THRESHOLD[fail_on]
+    return threshold is not None and worst.rank >= threshold.rank
 
 
 def classify(change: SchemaChange, affected: bool) -> Severity:

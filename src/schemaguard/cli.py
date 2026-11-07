@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
-from schemaguard.config import ConfigError, load_config
+from schemaguard.config import ConfigError, FailOn, load_config
 from schemaguard.dbt.columns import ColumnUsage, column_usage
 from schemaguard.dbt.lineage import (
     Downstream,
@@ -15,7 +15,7 @@ from schemaguard.dbt.lineage import (
     split,
 )
 from schemaguard.dbt.manifest import Manifest
-from schemaguard.impact import AnalyzerError, analyze
+from schemaguard.impact import AnalyzerError, analyze, should_fail
 from schemaguard.migrations import (
     ChangeSet,
     parse_alembic,
@@ -142,8 +142,18 @@ def check(
     output_format: Annotated[
         OutputFormat, typer.Option("--format", "-f", help="...")
     ] = OutputFormat.TEXT,
+    fail_on: Annotated[
+        FailOn | None,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 at this severity or above (default: the config's fail_on)",
+        ),
+    ] = None,
 ) -> None:
-    """Check migrations against the dbt project"""
+    """Check migrations against the dbt project
+
+    Exit codes: 0 below the fail_on threshold, 1 at or above it, 2 on errors.
+    """
     try:
         cfg = load_config(config.read_text(encoding="utf-8"))
     except (ConfigError, UnicodeDecodeError) as e:
@@ -175,6 +185,9 @@ def check(
     else:
         for line in format_report(report):
             typer.echo(line)
+
+    if should_fail(report.worst, fail_on or cfg.fail_on):
+        raise typer.Exit(code=1)
 
 
 def parse_file(file: Path) -> ChangeSet:

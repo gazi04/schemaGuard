@@ -1,11 +1,12 @@
 import pytest
 
-from schemaguard.config import SourceRef
+from schemaguard.config import FailOn, SourceRef
 from schemaguard.impact import AffectedModel, ChangeImpact, ImpactReport, Severity
 from schemaguard.impact.severity import (
     classify,
     is_possible_rename,
     rename_candidates,
+    should_fail,
 )
 from schemaguard.migrations import ChangeKind, SchemaChange
 
@@ -187,3 +188,21 @@ def test_rename_candidates_flags_every_drop() -> None:
 
     assert is_possible_rename(first, candidates)
     assert is_possible_rename(second, candidates)
+
+
+@pytest.mark.parametrize(
+    ("worst", "fail_on", "expected"),
+    [
+        (S.SAFE, FailOn.BREAKING, False),
+        (S.RISKY, FailOn.BREAKING, False),
+        (S.BREAKING, FailOn.BREAKING, True),
+        (S.SAFE, FailOn.RISKY, False),
+        (S.RISKY, FailOn.RISKY, True),
+        (S.BREAKING, FailOn.RISKY, True),
+        (S.SAFE, FailOn.NEVER, False),
+        (S.RISKY, FailOn.NEVER, False),
+        (S.BREAKING, FailOn.NEVER, False),
+    ],
+)
+def test_should_fail(worst: Severity, fail_on: FailOn, expected: bool):
+    assert should_fail(worst, fail_on) is expected
