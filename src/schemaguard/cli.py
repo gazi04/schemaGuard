@@ -1,3 +1,4 @@
+import os
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -15,7 +16,8 @@ from schemaguard.dbt.lineage import (
     split,
 )
 from schemaguard.dbt.manifest import Manifest
-from schemaguard.impact import AnalyzerError, analyze, should_fail
+from schemaguard.github import GitHubError, make_client, post_comment
+from schemaguard.impact import AnalyzerError, ImpactReport, analyze, should_fail
 from schemaguard.migrations import (
     ChangeSet,
     parse_alembic,
@@ -149,11 +151,28 @@ def check(
             help="Exit 1 at this severity or above (default: the config's fail_on)",
         ),
     ] = None,
+    pr: Annotated[
+        int | None,
+        typer.Option(
+            "--pr",
+            min=1,
+            help="Also post the report as a comment on this PR "
+            "(needs GITHUB_TOKEN and GITHUB_REPOSITORY in the environment)",
+        ),
+    ] = None,
 ) -> None:
     """Check migrations against the dbt project
 
     Exit codes: 0 below the fail_on threshold, 1 at or above it, 2 on errors.
     """
+    token = os.environ.get("GITHUB_TOKEN", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if pr is not None and not (token and repo):
+        typer.echo(
+            "Error: --pr needs GITHUB_TOKEN and GITHUB_REPOSITORY to be set", err=True
+        )
+        raise typer.Exit(code=2)
+
     try:
         cfg = load_config(config.read_text(encoding="utf-8"))
     except (ConfigError, UnicodeDecodeError) as e:
@@ -186,8 +205,21 @@ def check(
         for line in format_report(report):
             typer.echo(line)
 
+    if pr is not None:
+        comment_on_pr(report, token, repo, pr)
+
     if should_fail(report.worst, fail_on or cfg.fail_on):
         raise typer.Exit(code=1)
+
+
+def comment_on_pr(report: ImpactReport, token: str, repo: str, pr: int) -> None:
+    """Post the markdown report. A failure warns but never changes the exit code."""
+    empty = not (report.impacts or report.unmapped or report.not_analyzed)
+    try:
+        with make_client(token) as client:
+            post_comment(client, repo, pr, format_markdown(report), create=not empty)
+    except GitHubError as e:
+        typer.echo(f"Warning: could not post the PR comment: {e}", err=True)
 
 
 def parse_file(file: Path) -> ChangeSet:

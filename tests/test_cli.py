@@ -13,6 +13,7 @@ from schemaguard.cli import (
 )
 from schemaguard.dbt.columns import ColumnUsage
 from schemaguard.dbt.lineage import Downstream
+from schemaguard.github import GitHubError
 from schemaguard.migrations import ChangeKind, ChangeSet, NotAnalyzed, SchemaChange
 from schemaguard.report import MARKER
 
@@ -515,3 +516,98 @@ def test_check_failing_json_keeps_stdout_clean(tmp_path: Path):
     assert result.exit_code == 1
     assert json.loads(result.stdout)["worst"] == "breaking"
     assert result.stderr == ""
+
+
+class FakePost:
+    """Stands in for post_comment; records calls, optionally raises."""
+
+    def __init__(self, error: GitHubError | None = None):
+        self.calls: list[tuple[str, int, str, bool]] = []
+        self.error = error
+
+    def __call__(
+        self, client: object, repo: str, pr: int, body: str, *, create: bool = True
+    ) -> str:
+        self.calls.append((repo, pr, body, create))
+        if self.error:
+            raise self.error
+        return "created"
+
+
+@pytest.fixture
+def github_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "acme/shop")
+
+
+def test_check_pr_posts_markdown_comment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_env: None
+):
+    fake = FakePost()
+    monkeypatch.setattr("schemaguard.cli.post_comment", fake)
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--pr", "7"])
+
+    assert result.exit_code == 1
+    assert "source app.customers" in result.stdout
+    [(repo, pr, body, create)] = fake.calls
+    assert (repo, pr, create) == ("acme/shop", 7, True)
+    assert body.splitlines()[0] == MARKER
+
+
+def test_check_pr_empty_report_does_not_create(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_env: None
+):
+    fake = FakePost()
+    monkeypatch.setattr("schemaguard.cli.post_comment", fake)
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--pr", "7"])
+
+    assert result.exit_code == 0
+    assert [c[3] for c in fake.calls] == [False]
+
+
+def test_check_without_pr_does_not_post(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_env: None
+):
+    fake = FakePost()
+    monkeypatch.setattr("schemaguard.cli.post_comment", fake)
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    runner.invoke(app, ["check", "--config", str(config)])
+
+    assert fake.calls == []
+
+
+def test_check_pr_needs_token_and_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--pr", "7"])
+
+    assert result.exit_code == 2
+    assert "GITHUB_TOKEN" in result.stderr
+
+
+def test_check_pr_must_be_positive(tmp_path: Path, github_env: None):
+    config = make_project(tmp_path, {})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--pr", "0"])
+
+    assert result.exit_code == 2
+
+
+def test_check_pr_post_failure_warns_and_keeps_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_env: None
+):
+    monkeypatch.setattr("schemaguard.cli.post_comment", FakePost(GitHubError("403")))
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--pr", "7"])
+
+    assert result.exit_code == 1
+    assert "Warning: could not post the PR comment: 403" in result.stderr
+    assert "secret-token" not in result.stdout + result.stderr
