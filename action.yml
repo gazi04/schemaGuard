@@ -1,0 +1,36 @@
+name: SchemaGuard
+description: Find dbt models broken by database migrations in a pull request.
+
+inputs:
+  config:
+    description: Path to schemaguard.yml, relative to working-directory.
+    default: schemaguard.yml
+  fail-on:
+    description: Fail at this severity or above (breaking, risky, never). Empty means the config's fail_on.
+    default: ""
+  github-token:
+    description: Token used to post the PR comment. Needs pull-requests write permission.
+    default: ${{ github.token }}
+  working-directory:
+    description: Folder to run in (the backend repo root).
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+
+    - name: Run SchemaGuard
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CONFIG: ${{ inputs.config }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        uvx --python 3.13 --from "$ACTION_PATH" schemaguard check \
+          --config "$CONFIG" \
+          ${FAIL_ON:+--fail-on "$FAIL_ON"} \
+          ${PR_NUMBER:+--pr "$PR_NUMBER"}
