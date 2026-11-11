@@ -1,5 +1,7 @@
 name: SchemaGuard
-description: Find dbt models broken by database migrations in a pull request.
+description: >-
+  Find dbt models broken by database migrations in a pull request.
+  Check out the repo first with actions/checkout and fetch-depth 2.
 
 inputs:
   config:
@@ -29,8 +31,10 @@ runs:
         FAIL_ON: ${{ inputs.fail-on }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+      # On a pull request, actions/checkout gives the merge commit: HEAD^1 is the
+      # base branch, so --base HEAD^1 checks only the PR's migrations.
       run: |
         uvx --python 3.13 --from "$ACTION_PATH" schemaguard check \
           --config "$CONFIG" \
           ${FAIL_ON:+--fail-on "$FAIL_ON"} \
-          ${PR_NUMBER:+--pr "$PR_NUMBER"}
+          ${PR_NUMBER:+--pr "$PR_NUMBER" --base HEAD^1}

@@ -30,3 +30,8 @@ def test_inputs_have_descriptions_and_defaults():
 def test_inputs_are_not_interpolated_into_shell():
     for step in load()["runs"]["steps"]:
         assert "${{" not in step.get("run", "")
+
+
+def test_pull_requests_check_only_changed_migrations():
+    run = next(s["run"] for s in load()["runs"]["steps"] if "run" in s)
+    assert '${PR_NUMBER:+--pr "$PR_NUMBER" --base HEAD^1}' in run

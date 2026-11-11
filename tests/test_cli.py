@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -611,3 +612,85 @@ def test_check_pr_post_failure_warns_and_keeps_exit_code(
     assert result.exit_code == 1
     assert "Warning: could not post the PR comment: 403" in result.stderr
     assert "secret-token" not in result.stdout + result.stderr
+
+
+def git(repo: Path, *args: str) -> None:
+    subprocess.run(  # noqa: S603
+        [  # noqa: S607
+            "git",
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            *args,
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+def commit_all(repo: Path) -> None:
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "change")
+
+
+def git_project(tmp_path: Path) -> Path:
+    """A committed project whose only migration is a breaking drop_column."""
+    config = make_project(tmp_path, {"0001.py": alembic_fixture("drop_column.py")})
+    git(tmp_path, "init", "-q")
+    commit_all(tmp_path)
+    return config
+
+
+def test_check_base_only_changed_migrations(tmp_path: Path):
+    config = git_project(tmp_path)
+    (tmp_path / "versions" / "0002.py").write_text(
+        alembic_fixture("add_column.py"), encoding="utf-8"
+    )
+    commit_all(tmp_path)
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--base", "HEAD~1"])
+
+    assert result.exit_code == 0
+    assert "0002.py" in result.stdout
+    assert "0001.py" not in result.stdout
+    assert "add_column" in result.stdout
+
+
+def test_check_base_ignores_files_outside_migrations(tmp_path: Path):
+    config = git_project(tmp_path)
+    (tmp_path / "README.md").write_text("docs\n", encoding="utf-8")
+    (tmp_path / "versions" / "__init__.py").write_text("", encoding="utf-8")
+    commit_all(tmp_path)
+
+    result = runner.invoke(app, ["check", "--config", str(config), "--base", "HEAD~1"])
+
+    assert result.exit_code == 0
+    assert result.stdout.splitlines()[-1] == "No changes found."
+
+
+def test_check_base_unknown_ref(tmp_path: Path):
+    config = git_project(tmp_path)
+
+    result = runner.invoke(
+        app, ["check", "--config", str(config), "--base", "no-such-ref"]
+    )
+
+    assert result.exit_code == 2
+    assert "git diff against no-such-ref failed" in result.stderr
+    assert result.stdout == ""
+
+
+def test_check_base_with_files(tmp_path: Path):
+    config = git_project(tmp_path)
+    migration = str(tmp_path / "versions" / "0001.py")
+
+    result = runner.invoke(
+        app, ["check", migration, "--config", str(config), "--base", "HEAD"]
+    )
+
+    assert result.exit_code == 2
+    assert "not both" in result.stderr

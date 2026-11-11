@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -160,11 +162,22 @@ def check(
             "(needs GITHUB_TOKEN and GITHUB_REPOSITORY in the environment)",
         ),
     ] = None,
+    base_ref: Annotated[
+        str | None,
+        typer.Option(
+            "--base",
+            help="Only check migrations changed since this git ref",
+        ),
+    ] = None,
 ) -> None:
     """Check migrations against the dbt project
 
     Exit codes: 0 below the fail_on threshold, 1 at or above it, 2 on errors.
     """
+    if files and base_ref is not None:
+        typer.echo("Error: pass migration files or --base, not both", err=True)
+        raise typer.Exit(code=2)
+
     token = os.environ.get("GITHUB_TOKEN", "")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     if pr is not None and not (token and repo):
@@ -186,7 +199,10 @@ def check(
         if not folder.is_dir():
             typer.echo(f"Error: migrations folder {folder} not found", err=True)
             raise typer.Exit(code=2)
-        files = migration_files(folder)
+        if base_ref is None:
+            files = migration_files(folder)
+        else:
+            files = changed_migrations(folder, base_ref)
 
     change_set = merge_change_sets([parse_file(f) for f in files])
     manifest = load_manifest(base / cfg.manifest)
@@ -255,6 +271,43 @@ def migration_files(folder: Path) -> list[Path]:
         and p.suffix.lower() in (".py", ".sql")
         and not p.name.startswith("__")
     )
+
+
+def changed_migrations(folder: Path, base_ref: str) -> list[Path]:
+    """Migrations in folder that differ from base_ref (deleted files skipped)."""
+    git = shutil.which("git")
+    if git is None:
+        typer.echo("Error: --base needs git on PATH", err=True)
+        raise typer.Exit(code=2)
+
+    # Fixed argument list, no shell; --end-of-options keeps the ref from being a flag.
+    result = subprocess.run(  # noqa: S603
+        [
+            git,
+            "diff",
+            "--name-only",
+            "-z",
+            "--relative",
+            "--diff-filter=d",
+            "--end-of-options",
+            base_ref,
+            "--",
+            ".",
+        ],
+        cwd=folder,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        typer.echo(
+            f"Error: git diff against {base_ref} failed: {result.stderr.strip()}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    changed = {folder / name for name in result.stdout.split("\0") if name}
+    return [p for p in migration_files(folder) if p in changed]
 
 
 def merge_change_sets(change_sets: list[ChangeSet]) -> ChangeSet:
