@@ -1,7 +1,7 @@
 [project]
 name = "schemaguard"
 version = "0.1.0"
-description = "Add your description here"
+description = "Catch database migrations that break dbt models, in the backend pull request"
 readme = "README.md"
 authors = [
     { name = "gazi04", email = "gazmendhalili2016@gmail.com" }
