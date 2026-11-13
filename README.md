@@ -137,6 +137,19 @@ uvx --from git+https://github.com/gazi04/schemaGuard schemaguard check --base ma
 
 Exit codes: `0` below the `fail_on` threshold, `1` at or above it, `2` for a usage problem (bad config, missing manifest, unknown file type, a mapped source missing from the manifest). Unmapped and not-analyzed entries never fail the run.
 
+## Metrics
+
+Measured on 2026-11-13. They come from a small suite I wrote myself, so treat them as a sanity check, not a benchmark.
+
+| Metric | Result | How it was measured |
+| --- | --- | --- |
+| Detection rate | **15 / 15 (100%)** | Changes that truly break or may break dbt (a read column dropped, renamed, retyped or made nullable; a read table dropped or renamed; a column with a source test) that `check` marks risky or breaking |
+| False-alarm rate | **2 / 11 (18%)** | Harmless changes that `check` marks risky or breaking. Both are `DROP TABLE payments`, a table no model reads: a table-level drop is always breaking because the dbt source would still point at it |
+| Column-level vs table-level | **6 / 12 models (50%) vs 6 / 12 (50%)** | In the demo dbt project, models reading a source directly are matched by column; the other 6 are matched by table. All 12 have `compiled_code` |
+| Run time | **0.36 s** | `schemaguard check` on the demo backend repo, local, with the manifest already committed |
+
+The suite is the 26 migrations in `tests/fixtures/scenarios/` (21 Alembic, 5 raw SQL), 26 analyzed changes in total. "Truly breaks" was labelled by hand per change, not taken from the tool's own expected output. Only the tool run itself is timed: the Action adds checkout and the `uvx` install on top.
+
 ## Known limitations
 
 SchemaGuard is an MVP: Alembic and raw SQL, Postgres, GitHub. The main limits:

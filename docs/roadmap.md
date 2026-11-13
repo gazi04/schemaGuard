@@ -102,7 +102,8 @@ Goal: connect the two sides.
 
 - [x] README: demo GIF, architecture diagram, setup steps, known limitations.
   - Done Nov 12. `README.md` rewritten: Demo (`docs/images/demo.gif`, a terminal GIF rendered with Pillow from the real `check --base main` output on the two demo branches: rename → breaking, exit 1; add column → safe, exit 0; plus links to demoBackRepo PR #1 / #2 and the real PR #1 comment), How it works (Mermaid pipeline diagram, severity table), Setup (compiled manifest, `schemaguard.yml`, workflow with `fetch-depth: 2` and `pull-requests: write`, Action inputs), CLI (commands, `check` options, exit codes; checked against `check --help`), Known limitations (user-facing summary, full list linked to `architecture.md`), Development. `pyproject.toml` got a real `description`. The README links to `docs/`, so `docs/` has to be committed with it.
-- [ ] README metrics: detection rate, false-alarm rate, share of models with column-level lineage vs table-level, run time on the demo repo.
+- [x] README metrics: detection rate, false-alarm rate, share of models with column-level lineage vs table-level, run time on the demo repo.
+  - Done Nov 13. `README.md` has a Metrics section: detection 15/15, false alarms 2/11 (both `DROP TABLE payments`, unread table), 6/12 models column-level vs 6/12 table-level in the demo dbt project, `check` takes 0.36 s on the demo backend repo. Truth labels were written by hand per change over the 26 scenario migrations; the suite is self-written, so the README says it is a sanity check, not a benchmark.
 - [ ] Optional, in this order: PyPI release, Mermaid lineage graph, blog or LinkedIn post.
 
 ## Why this order
