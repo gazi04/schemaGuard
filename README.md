@@ -29,18 +29,7 @@ Each new push to the PR updates the same comment instead of adding another one.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    M["Migrations<br/>Alembic .py / raw .sql"] --> P["migrations/<br/>ast + sqlglot"]
-    D["dbt manifest.json"] --> L["dbt/<br/>lineage + column usage"]
-    C["schemaguard.yml"] --> G["config/"]
-    P -- ChangeSet --> A["impact/<br/>analyzer + severity"]
-    L -- lineage --> A
-    G -- Config --> A
-    A -- ImpactReport --> R["report/<br/>text, JSON, markdown"]
-    R --> GH["github/<br/>PR comment"]
-    R --> X["exit code"]
-```
+![SchemaGuard pipeline: migrations, dbt manifest and config feed the analyzer, which produces a report, a PR comment and an exit code](https://raw.githubusercontent.com/gazi04/schemaGuard/main/docs/images/pipeline.svg)
 
 1. **Parse migrations.** Alembic files are read with Python's `ast` (only `upgrade()`); raw SQL and `op.execute("...")` strings go through sqlglot. Both give the same list of changes. Anything the parsers don't understand is listed as "not analyzed", never skipped silently.
 2. **Map to dbt.** `schemaguard.yml` says which backend table is which dbt source.
