@@ -1,5 +1,5 @@
 [project]
-name = "schemaguard"
+name = "schemaguard-ci"
 version = "0.1.0"
 description = "Catch database migrations that break dbt models, in the backend pull request"
 readme = "README.md"
@@ -30,6 +30,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
+
+[tool.uv.build-backend]
+module-name = 'schemaguard'
 
 [tool.pyright]
 include = ["src", "tests"]
