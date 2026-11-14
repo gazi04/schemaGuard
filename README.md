@@ -6,7 +6,7 @@ It reads the migrations changed in a PR (Alembic or raw SQL), maps the changed t
 
 ## Demo
 
-![schemaguard check on the two demo branches: a renamed column is breaking (exit 1), an added column is safe (exit 0)](docs/images/demo.gif)
+![schemaguard check on the two demo branches: a renamed column is breaking (exit 1), an added column is safe (exit 0)](https://raw.githubusercontent.com/gazi04/schemaGuard/main/docs/images/demo.gif)
 
 `schemaguard check` on the branches behind the two demo PRs, against `main`. The output is real; the GIF is rendered from it.
 
@@ -151,7 +151,7 @@ SchemaGuard is an MVP: Alembic and raw SQL, Postgres, GitHub. The main limits:
 - **GitHub:** PRs from forks get a read-only token, so no comment is posted (the check still fails on severity). The workflow above uses `@main`, not a pinned version.
 - **Replication:** tools like Fivetran or Airbyte may soften renames and drops; SchemaGuard assumes the change reaches the warehouse as written.
 
-The full list is in [`docs/architecture.md`](docs/architecture.md#known-limitations-mvp).
+The full list is in [`docs/architecture.md`](https://github.com/gazi04/schemaGuard/blob/main/docs/architecture.md#known-limitations-mvp).
 
 ## Development
 
@@ -163,4 +163,4 @@ uv run ruff check .    # lint
 uv run pre-commit run --all-files
 ```
 
-Design and decisions: [`docs/architecture.md`](docs/architecture.md). Plan and progress: [`docs/roadmap.md`](docs/roadmap.md).
+Design and decisions: [`docs/architecture.md`](https://github.com/gazi04/schemaGuard/blob/main/docs/architecture.md). Plan and progress: [`docs/roadmap.md`](https://github.com/gazi04/schemaGuard/blob/main/docs/roadmap.md).
