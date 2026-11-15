@@ -521,7 +521,7 @@ wheels = [
 ]
 
 [[package]]
-name = "schemaguard"
+name = "schemaguard-ci"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
