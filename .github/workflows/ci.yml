@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Runs on main always finish; superseded PR runs are cancelled.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Fail if uv.lock is out of date instead of silently rewriting it.
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
+      - run: uv build
+      # Run the built wheel in a clean environment, as a user would. This
+      # catches a missing template or a wrong module name, which the tests
+      # (that import from src/) cannot.
+      - name: Smoke test the wheel
+        run: |
+          wheel="$(ls "$PWD"/dist/*.whl)"
+          uv run --isolated --no-project --with "$wheel" schemaguard --help
+          cd tests/fixtures/scenarios
+          uv run --isolated --no-project --with "$wheel" \
+            schemaguard check --format markdown --fail-on never \
+            > "$RUNNER_TEMP/comment.md"
+          grep -q '<!-- schemaguard -->' "$RUNNER_TEMP/comment.md"
